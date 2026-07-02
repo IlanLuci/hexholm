@@ -173,13 +173,25 @@ export function TradeModal({ view, send, onClose }: { view: GameView; send: Send
               {RES_ORDER.map((r) => (
                 <OfferRow key={r} res={r} value={offGet[r]} max={99} onDec={() => setOffGet({ ...offGet, [r]: Math.max(0, offGet[r] - 1) })} onInc={() => setOffGet({ ...offGet, [r]: offGet[r] + 1 })} />
               ))}
-              <button
-                onClick={() => send({ type: "proposeTrade", give: offGive, get: offGet })}
-                disabled={RES_ORDER.every((r) => !offGive[r]) && RES_ORDER.every((r) => !offGet[r])}
-                style={{ ...green, width: "100%", marginTop: 14 }}
-              >
-                Send offer to table
-              </button>
+              {(() => {
+                const canSend = RES_ORDER.some((r) => offGive[r]) && RES_ORDER.some((r) => offGet[r]);
+                return (
+                  <>
+                    <button
+                      onClick={() => canSend && send({ type: "proposeTrade", give: offGive, get: offGet })}
+                      disabled={!canSend}
+                      style={{ ...green, width: "100%", marginTop: 14, opacity: canSend ? 1 : 0.5, cursor: canSend ? "pointer" : "not-allowed" }}
+                    >
+                      Send offer to table
+                    </button>
+                    {!canSend && (
+                      <p style={{ margin: "8px 0 0", fontSize: 12, color: C.muted, fontWeight: 600, textAlign: "center" }}>
+                        Pick at least one resource to give and one to receive.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </>
           )}
         </div>

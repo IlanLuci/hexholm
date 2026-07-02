@@ -405,8 +405,8 @@ function applyPlay(s: GameState, action: Action, seat: number): ApplyResult {
       if (guard) return guard;
       if (!hasHand(s.seats[seat]!, action.give))
         return err("You do not hold what you offer");
-      if (partialTotal(action.give) === 0 && partialTotal(action.get) === 0)
-        return err("Empty trade");
+      if (partialTotal(action.give) === 0 || partialTotal(action.get) === 0)
+        return err("A trade must give and receive at least one resource");
       const responses: Record<number, "pending" | "accept" | "reject"> = {};
       for (const st of s.seats) if (st.id !== seat) responses[st.id] = "pending";
       s.trade = { from: seat, give: action.give, get: action.get, responses };
