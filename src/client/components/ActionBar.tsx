@@ -75,7 +75,26 @@ export function ActionBar({ view, isMyTurn, buildMode, onPickBuild, onRoll, onTr
           return (
             <div key={`${r}-${flash.id}`} className={cls} style={{ position: "relative", width: 52, height: 72, borderRadius: 6, background: CARD[r], boxShadow: "0 3px 9px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.16)", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 8, border: "1px solid rgba(255,255,255,.14)", opacity: hand[r] === 0 ? 0.42 : 1 }}>
               {delta !== 0 && (
-                <span style={{ position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)", fontFamily: font.display, fontWeight: 800, fontSize: 15, color: delta > 0 ? "#8FBF6A" : "#E08C74", textShadow: "0 1px 3px rgba(0,0,0,.5)", animation: "hhdelta 1.1s ease forwards", pointerEvents: "none", whiteSpace: "nowrap" }}>
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -18,
+                    left: "50%",
+                    fontFamily: font.display,
+                    fontWeight: 800,
+                    fontSize: delta > 0 ? 20 : 17,
+                    color: "#fff",
+                    background: delta > 0 ? "#5F9A3C" : "#B4503A",
+                    padding: "3px 9px",
+                    borderRadius: 11,
+                    border: "1.5px solid rgba(255,255,255,.5)",
+                    boxShadow: "0 4px 10px rgba(0,0,0,.45)",
+                    animation: "hhdeltapop 1.5s ease forwards",
+                    pointerEvents: "none",
+                    whiteSpace: "nowrap",
+                    zIndex: 3,
+                  }}
+                >
                   {delta > 0 ? `+${delta}` : delta}
                 </span>
               )}
