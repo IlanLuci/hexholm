@@ -5,10 +5,15 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev": "wrangler dev",
+    "build": "vite build",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241106.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "wrangler": "^3.90.0"
   }
 }
