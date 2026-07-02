@@ -19,10 +19,12 @@ function fmtAgo(ts: number): string {
 }
 
 export function AdminDashboard() {
+  const REFRESH_S = 8;
   const [key, setKey] = useState(localStorage.getItem("hexholm:adminkey") ?? "");
   const [input, setInput] = useState("");
   const [stats, setStats] = useState<StatsSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(REFRESH_S);
 
   useEffect(() => {
     if (!key) return;
@@ -48,7 +50,16 @@ export function AdminDashboard() {
       }
     };
     load();
-    const id = setInterval(load, 8000);
+    setSecondsLeft(REFRESH_S);
+    const id = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          load();
+          return REFRESH_S;
+        }
+        return s - 1;
+      });
+    }, 1000);
     return () => {
       live = false;
       clearInterval(id);
@@ -103,7 +114,9 @@ export function AdminDashboard() {
             <HexLogo size={26} color={C.terracotta} />
             <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 20, color: C.ink }}>Hexholm admin</span>
           </div>
-          <span style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>{error ? error : "Live · refreshes every 8s"}</span>
+          <span style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>
+            {error ? error : `Refreshes in ${secondsLeft}s`}
+          </span>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 26 }}>
