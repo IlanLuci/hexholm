@@ -222,7 +222,7 @@ function OfferRow({ res, value, max, onDec, onInc }: { res: Resource; value: num
   );
 }
 
-export function DevModal({ view, send, onClose, onKnight, onPlenty, onMono }: { view: GameView; send: Send; onClose: () => void; onKnight: () => void; onPlenty: () => void; onMono: () => void }) {
+export function DevModal({ view, send, onClose, onKnight, onRoad, onPlenty, onMono }: { view: GameView; send: Send; onClose: () => void; onKnight: () => void; onRoad: () => void; onPlenty: () => void; onMono: () => void }) {
   const me = view.seats[view.youSeat]!;
   const playable = me.devCards ?? [];
   const pending = me.newDevCards ?? [];
@@ -231,7 +231,7 @@ export function DevModal({ view, send, onClose, onKnight, onPlenty, onMono }: { 
   for (const c of pending) counts[c + "_new"] = (counts[c + "_new"] ?? 0) + 1;
   const meta: Record<string, { name: string; desc: string; play?: () => void }> = {
     knight: { name: "Knight", desc: "Move the robber and steal.", play: () => { onClose(); onKnight(); } },
-    road: { name: "Road Building", desc: "Place 2 roads for free.", play: () => send({ type: "playRoadBuilding" }) },
+    road: { name: "Road Building", desc: "Place 2 roads for free.", play: () => { onClose(); onRoad(); } },
     plenty: { name: "Year of Plenty", desc: "Take any 2 from the bank.", play: () => { onClose(); onPlenty(); } },
     mono: { name: "Monopoly", desc: "Name a resource; rivals hand it over.", play: () => { onClose(); onMono(); } },
     vp: { name: "Victory Point", desc: "Worth 1 point. Kept secret.", },

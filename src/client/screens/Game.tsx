@@ -66,8 +66,10 @@ export function GameScreen({ game, view }: { game: Game; view: GameView }) {
     setBuildMode(null);
   };
   const onEdge = (e: number) => {
-    if (mode === "road") send(inSetup ? { type: "placeRoad", edge: e } : { type: "buildRoad", edge: e });
-    setBuildMode(null);
+    if (mode !== "road") return;
+    send(inSetup ? { type: "placeRoad", edge: e } : { type: "buildRoad", edge: e });
+    // stay in road mode while free roads (from Road Building) remain to place
+    setBuildMode(!inSetup && (view.turn?.freeRoads ?? 0) > 1 ? "road" : null);
   };
   const onHex = (h: number) => {
     if (mode !== "robber") return;
@@ -162,6 +164,7 @@ export function GameScreen({ game, view }: { game: Game; view: GameView }) {
           send={send}
           onClose={() => setModal(null)}
           onKnight={() => setPendingKnight(true)}
+          onRoad={() => { send({ type: "playRoadBuilding" }); setBuildMode("road"); }}
           onPlenty={() => setModal("plenty")}
           onMono={() => setModal("mono")}
         />
