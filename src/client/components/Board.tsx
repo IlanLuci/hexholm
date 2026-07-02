@@ -24,8 +24,7 @@ interface Props {
   onHex: (h: number) => void;
 }
 
-// board bounds + centre, derived once from the shared projection
-const VP = Array.from({ length: VERTEX_COUNT }, (_, v) => vertexPixel(v));
+// board centre, derived once from the shared projection
 const CENTER = (() => {
   let x = 0,
     y = 0;
@@ -36,18 +35,6 @@ const CENTER = (() => {
   }
   return { x: x / HEX_COUNT, y: y / HEX_COUNT };
 })();
-const BOUNDS = (() => {
-  const xs = VP.map((p) => p.x),
-    ys = VP.map((p) => p.y);
-  const pad = 30;
-  return {
-    x: Math.min(...xs) - pad,
-    y: Math.min(...ys) - pad,
-    w: Math.max(...xs) - Math.min(...xs) + pad * 2,
-    h: Math.max(...ys) - Math.min(...ys) + pad * 2,
-  };
-})();
-
 function hexPoints(h: number): string {
   return hexVertices(h)
     .map((v) => {
@@ -70,17 +57,10 @@ export function Board({
   return (
     <svg viewBox="0 0 600 600" style={{ width: "100%", height: "100%", display: "block" }}>
       <defs>
-        <linearGradient id="hhwater" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#37606F" />
-          <stop offset="100%" stopColor="#223f4b" />
-        </linearGradient>
         <filter id="hhShadow" x="-40%" y="-40%" width="180%" height="180%">
           <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.32" />
         </filter>
       </defs>
-
-      {/* water */}
-      <rect x={BOUNDS.x} y={BOUNDS.y} width={BOUNDS.w} height={BOUNDS.h} rx={12} fill="url(#hhwater)" />
 
       {/* ports — one harbor badge per port with two dock lines to its entry spots */}
       {view.board.ports.map((port, pi) => {
@@ -88,11 +68,19 @@ export function Board({
         const b = vertexPixel(port.vertices[1]);
         const mx = (a.x + b.x) / 2,
           my = (a.y + b.y) / 2;
-        const dx = mx - CENTER.x,
-          dy = my - CENTER.y;
-        const L = Math.hypot(dx, dy) || 1;
-        const ox = mx + (dx / L) * 26,
-          oy = my + (dy / L) * 26;
+        // offset along the outward normal of the coast edge so the badge is
+        // exactly centred between the two entry points
+        let nx = -(b.y - a.y),
+          ny = b.x - a.x;
+        const nl = Math.hypot(nx, ny) || 1;
+        nx /= nl;
+        ny /= nl;
+        if ((mx - CENTER.x) * nx + (my - CENTER.y) * ny < 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+        const ox = mx + nx * 25,
+          oy = my + ny * 25;
         return (
           <g key={`port-${pi}`} pointerEvents="none">
             <line x1={a.x} y1={a.y} x2={ox} y2={oy} stroke="rgba(243,231,205,.5)" strokeWidth={2} strokeDasharray="2 2.5" />
@@ -128,13 +116,13 @@ export function Board({
         );
       })}
 
-      {/* embossed terrain glyph on each hex */}
+      {/* embossed terrain glyph on each hex (centred when there's no token) */}
       {Array.from({ length: HEX_COUNT }, (_, h) => {
         const tile = view.board.tiles[h]!;
         const p = hexPixel(h);
         const scl = 1.25;
         const gx = p.x - 12 * scl;
-        const gy = p.y - 22 - 12 * scl;
+        const gy = (tile.num == null ? p.y : p.y - 22) - 12 * scl;
         return (
           <g key={`glyph-${h}`} transform={`translate(${gx.toFixed(1)} ${gy.toFixed(1)}) scale(${scl})`} opacity={0.92} pointerEvents="none">
             <TileGlyph name={tile.terrain} c={shade(TILE[tile.terrain], -40)} c2={shade(TILE[tile.terrain], -64)} />
