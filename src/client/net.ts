@@ -66,8 +66,12 @@ export function useGame(): Game {
 
   const connect = useCallback(
     (code: string, name: string) => {
-      params.current = { code: code.toUpperCase(), name };
+      const upper = code.toUpperCase();
+      params.current = { code: upper, name };
       alive.current = true;
+      // remember the active room so a page reload rejoins automatically
+      localStorage.setItem("hexholm:room", upper);
+      localStorage.setItem("hexholm:name", name);
       open();
     },
     [open],
@@ -85,6 +89,7 @@ export function useGame(): Game {
     ws.current?.close();
     ws.current = null;
     params.current = null;
+    localStorage.removeItem("hexholm:room");
     setView(null);
     setSeatId(null);
     setStatus("idle");

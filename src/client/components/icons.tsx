@@ -1,46 +1,96 @@
-import type { Resource } from "../../shared/types";
+import type { Resource, Terrain } from "../../shared/types";
+import { CARD } from "../theme";
 
-/** Small glyphs for each resource, drawn on a light card face. */
-export function ResIcon({ res, size = 16 }: { res: Resource; size?: number }) {
-  const s = size;
-  const stroke = "rgba(255,255,255,.92)";
-  const common = { fill: "none", stroke, strokeWidth: 1.6, strokeLinejoin: "round" as const, strokeLinecap: "round" as const };
-  switch (res) {
+/** Additively lighten/darken a #rrggbb colour by `amt` per channel (clamped). */
+export function shade(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const cl = (v: number) => Math.max(0, Math.min(255, v));
+  const r = cl(((n >> 16) & 255) + amt);
+  const g = cl(((n >> 8) & 255) + amt);
+  const b = cl((n & 255) + amt);
+  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
+}
+
+/** Filled resource/terrain glyph on a 24×24 grid, matching the design prototype.
+ *  Rendered as the tile's embossed icon and inside harbor badges. */
+export function TileGlyph({ name, c, c2 }: { name: Terrain; c: string; c2: string }) {
+  switch (name) {
     case "brick":
       return (
-        <svg width={s} height={s} viewBox="0 0 24 24">
-          <rect x="3" y="7" width="18" height="11" rx="1.5" {...common} />
-          <path d="M3 12.5h18M12 7v5.5M8 12.5V18M16 12.5V18" {...common} />
-        </svg>
+        <>
+          <rect x={2.5} y={13} width={8.5} height={6} rx={1} fill={c} />
+          <rect x={13} y={13} width={8.5} height={6} rx={1} fill={c} />
+          <rect x={7.75} y={5.5} width={8.5} height={6} rx={1} fill={c} />
+          <rect x={7.75} y={5.5} width={8.5} height={1.6} rx={0.8} fill={c2} />
+        </>
       );
     case "wood":
       return (
-        <svg width={s} height={s} viewBox="0 0 24 24">
-          <path d="M12 3c3 4 3 6 0 9-3-3-3-5 0-9Z" {...common} />
-          <path d="M12 12c3 3 3 5 0 9-3-4-3-6 0-9ZM12 21V3" {...common} />
-        </svg>
+        <>
+          <path d="M12 3 L18 12 H6 Z" fill={c} />
+          <path d="M12 8 L20 19 H4 Z" fill={c} />
+          <rect x={10.4} y={18.5} width={3.2} height={3.5} fill={c2} />
+        </>
       );
     case "sheep":
       return (
-        <svg width={s} height={s} viewBox="0 0 24 24">
-          <path d="M7 13a5 5 0 0 1 10 0 3 3 0 0 1-1 5H8a3 3 0 0 1-1-5Z" {...common} />
-          <path d="M9 18v2M15 18v2M12 8v0" {...common} />
-        </svg>
+        <>
+          <circle cx={9} cy={12.5} r={4.2} fill={c} />
+          <circle cx={13.5} cy={9.8} r={4.7} fill={c} />
+          <circle cx={16.6} cy={13} r={3.8} fill={c} />
+          <circle cx={11.3} cy={14.4} r={4.2} fill={c} />
+          <rect x={8.4} y={16.6} width={2} height={3.6} rx={1} fill={c2} />
+          <rect x={14} y={16.6} width={2} height={3.6} rx={1} fill={c2} />
+          <circle cx={18.8} cy={14.6} r={2.3} fill={c2} />
+        </>
       );
     case "wheat":
       return (
-        <svg width={s} height={s} viewBox="0 0 24 24">
-          <path d="M12 3v18M12 7c-2-1-3-2-3-4M12 7c2-1 3-2 3-4M12 12c-2-1-3-2-3-4M12 12c2-1 3-2 3-4M12 17c-2-1-3-2-3-4M12 17c2-1 3-2 3-4" {...common} />
-        </svg>
+        <>
+          <path d="M12 21 V8" stroke={c2} strokeWidth={1.7} fill="none" strokeLinecap="round" />
+          <path d="M12 3 q-2.2 2.6 0 5.2 q2.2 -2.6 0 -5.2" fill={c} />
+          <path d="M12 8 q-4.6 .4 -5.5 4.7 q4.4 -.5 5.5 -4.7" fill={c} />
+          <path d="M12 8 q4.6 .4 5.5 4.7 q-4.4 -.5 -5.5 -4.7" fill={c} />
+          <path d="M12 13 q-4.6 .4 -5.5 4.7 q4.4 -.5 5.5 -4.7" fill={c} />
+          <path d="M12 13 q4.6 .4 5.5 4.7 q-4.4 -.5 -5.5 -4.7" fill={c} />
+        </>
       );
     case "ore":
       return (
-        <svg width={s} height={s} viewBox="0 0 24 24">
-          <path d="M5 14l4-7 6 0 4 7-7 5-7-5Z" {...common} />
-          <path d="M9 7l3 7 3-7M5 14h14" {...common} />
-        </svg>
+        <>
+          <path d="M12 3 L19 9.5 L12 21 L5 9.5 Z" fill={c} />
+          <path d="M5 9.5 H19 M12 3 V21 M8 9.5 L12 3 L16 9.5" stroke={c2} strokeWidth={1} fill="none" opacity={0.7} />
+        </>
+      );
+    case "desert":
+      return (
+        <>
+          <circle cx={16.5} cy={8} r={3.3} fill={c} />
+          <path d="M3 19 Q8 12.5 12 16.5 Q16 20.5 21 15.5 V20 H3 Z" fill={c} />
+        </>
       );
   }
+}
+
+/** Resource icon matching the design's filled glyphs (uiIcon/smallIcon).
+ *  `onCard` renders white-on-colour for the hand cards; otherwise it renders in
+ *  the resource's own colour for light menu backgrounds. */
+export function ResIcon({
+  res,
+  size = 16,
+  onCard = false,
+}: {
+  res: Resource;
+  size?: number;
+  onCard?: boolean;
+}) {
+  const c = onCard ? "#fff" : CARD[res];
+  const c2 = onCard ? "rgba(0,0,0,.22)" : "rgba(0,0,0,.2)";
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "block", flexShrink: 0 }}>
+      <TileGlyph name={res} c={c} c2={c2} />
+    </svg>
+  );
 }
 
 export function HexLogo({ size = 30, color = "#D9A441" }: { size?: number; color?: string }) {

@@ -23,6 +23,13 @@
       .hh-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 2px; }
       @keyframes hhpop { 0% { transform: scale(.2); opacity: 0; } 60% { transform: scale(1.14); } 100% { transform: scale(1); opacity: 1; } }
       @keyframes hhfloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+      @keyframes hhfadeup { 0% { transform: translateY(8px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+      @keyframes hhshake { 0%,100% { transform: rotate(0); } 20% { transform: rotate(-14deg); } 40% { transform: rotate(12deg); } 60% { transform: rotate(-8deg); } 80% { transform: rotate(5deg); } }
+      @keyframes hhtoast { 0% { transform: translate(-50%, -10px); opacity: 0; } 12%,88% { transform: translate(-50%, 0); opacity: 1; } 100% { transform: translate(-50%, -10px); opacity: 0; } }
+      /* SVG pieces animate around their own centre when they first appear */
+      .hh-appear { transform-box: fill-box; transform-origin: center; animation: hhpop .32s ease both; }
+      .hh-fadeup { animation: hhfadeup .28s ease both; }
+      .hh-die-roll { animation: hhshake .5s ease; }
     </style>
   </head>
   <body>

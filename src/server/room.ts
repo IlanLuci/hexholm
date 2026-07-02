@@ -3,8 +3,11 @@ import type { GameState } from "../shared/types";
 import type { GameEvent } from "../shared/actions";
 import { apply, addSeat, createLobby } from "../shared/engine";
 import { toView } from "./views";
-import { driveBots } from "./bots";
+import { hasBotMove, stepBots } from "./bots";
 import type { ClientMessage, ServerMessage } from "./protocol";
+
+/** Delay between successive bot actions so players can follow the game. */
+const BOT_DELAY_MS = 650;
 
 export interface Env {
   GAME_ROOM: DurableObjectNamespace<GameRoom>;
@@ -65,7 +68,15 @@ export class GameRoom extends DurableObject<Env> {
 
   async webSocketClose(ws: WebSocket): Promise<void> {
     const att = ws.deserializeAttachment() as Attachment | null;
-    if (att && this.game && this.game.seats[att.seatId]) {
+    if (!att || !this.game || !this.game.seats[att.seatId]) return;
+    // Only mark the seat away if no other live socket still holds it (e.g. a
+    // second tab, or a fast reload that reconnected before this close fired).
+    const stillConnected = this.ctx.getWebSockets().some((other) => {
+      if (other === ws) return false;
+      const a = other.deserializeAttachment() as Attachment | null;
+      return a?.seatId === att.seatId;
+    });
+    if (!stillConnected) {
       this.game.seats[att.seatId]!.connected = false;
       await this.persist();
       this.broadcastState();
@@ -101,6 +112,7 @@ export class GameRoom extends DurableObject<Env> {
     await this.persist();
     this.send(ws, { t: "welcome", seatId, sessionToken: token });
     this.broadcastState();
+    await this.scheduleBots(); // in case we reconnected on a bot's turn
   }
 
   private async handleAction(
@@ -116,17 +128,25 @@ export class GameRoom extends DurableObject<Env> {
     await this.persist();
     this.broadcastState();
     if (result.events && result.events.length) this.broadcastEvents(result.events);
-    await this.runBots();
+    await this.scheduleBots();
   }
 
-  /** Let bots take their turns/obligations until it's a human's move again. */
-  private async runBots(): Promise<void> {
-    const outcome = driveBots(this.game!);
-    if (outcome.state === this.game && outcome.events.length === 0) return;
+  /** Schedule the next bot move (paced) if one is pending. */
+  private async scheduleBots(): Promise<void> {
+    if (this.game && hasBotMove(this.game))
+      await this.ctx.storage.setAlarm(Date.now() + BOT_DELAY_MS);
+  }
+
+  /** Fired by the scheduled alarm: play one bot action, broadcast, reschedule. */
+  async alarm(): Promise<void> {
+    if (!this.game) return;
+    const outcome = stepBots(this.game);
+    if (!outcome.acted) return;
     this.game = outcome.state;
     await this.persist();
     this.broadcastState();
     if (outcome.events.length) this.broadcastEvents(outcome.events);
+    await this.scheduleBots();
   }
 
   private broadcastState(): void {

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { C, font } from "../theme";
 import { HexLogo } from "../components/icons";
 import type { Game } from "../net";
@@ -6,6 +7,14 @@ import type { GameView } from "../../server/protocol";
 export function Lobby({ game, view }: { game: Game; view: GameView }) {
   const me = view.seats[view.youSeat];
   const allReady = view.seats.length >= 2 && view.seats.every((s) => s.ready);
+  const [copied, setCopied] = useState<string | null>(null);
+  const inviteLink = `${location.origin}/?room=${view.roomCode}`;
+  const copy = (text: string, label: string) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(label);
+      setTimeout(() => setCopied(null), 1600);
+    });
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: C.parchment, padding: "28px 20px 60px" }}>
@@ -16,6 +25,17 @@ export function Lobby({ game, view }: { game: Game; view: GameView }) {
             <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 20, color: C.ink, letterSpacing: ".5px" }}>HEXHOLM</span>
           </div>
           <button onClick={game.leave} style={outlineBtn}>Leave lobby</button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", background: C.tealDark, borderRadius: 10, padding: "20px 26px", marginBottom: 20 }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: "uppercase", color: "#7E9099", marginBottom: 4 }}>Invite players — room code</div>
+            <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 40, letterSpacing: 6, color: C.cream, lineHeight: 1 }}>{view.roomCode}</div>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={() => copy(view.roomCode, "code")} style={inviteBtn}>{copied === "code" ? "Copied ✓" : "Copy code"}</button>
+            <button onClick={() => copy(inviteLink, "link")} style={{ ...inviteBtn, background: C.terracotta, color: "#FBF3E4", border: "none" }}>{copied === "link" ? "Link copied ✓" : "Copy invite link"}</button>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
@@ -100,6 +120,7 @@ export function Lobby({ game, view }: { game: Game; view: GameView }) {
 }
 
 const outlineBtn: React.CSSProperties = { background: "transparent", border: "1px solid #CBB98F", color: "#6B5A42", fontFamily: font.body, fontWeight: 600, fontSize: 13, padding: "9px 16px", borderRadius: 4, cursor: "pointer" };
+const inviteBtn: React.CSSProperties = { background: "rgba(244,236,221,.1)", border: "1px solid rgba(244,236,221,.3)", color: C.cream, fontFamily: font.body, fontWeight: 700, fontSize: 13.5, padding: "12px 18px", borderRadius: 5, cursor: "pointer" };
 const bigBtn: React.CSSProperties = { border: "none", fontFamily: font.body, fontWeight: 700, fontSize: 15, padding: "14px 18px", borderRadius: 5, cursor: "pointer", letterSpacing: ".3px", flex: 1 };
 const miniBtn: React.CSSProperties = { background: "transparent", border: "1px solid #CBB98F", color: "#6B5A42", fontWeight: 600, fontSize: 12, padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontFamily: font.body };
 const pill: React.CSSProperties = { fontSize: 12, fontWeight: 800, padding: "5px 10px", borderRadius: 20 };

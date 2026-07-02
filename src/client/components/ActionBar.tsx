@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { C, CARD, RES_NAME, RES_ORDER, font } from "../theme";
 import { ResIcon, Die } from "./icons";
 import { COSTS, type PartialHand, type Resource } from "../../shared/types";
@@ -25,6 +26,20 @@ export function ActionBar({ view, isMyTurn, buildMode, onPickBuild, onRoll, onTr
   const rolled = view.turn?.hasRolled ?? false;
   const robber = view.turn?.mustMoveRobber ?? false;
 
+  // shake the dice whenever a new roll lands
+  const [rolling, setRolling] = useState(false);
+  const prevDice = useRef<string>("");
+  useEffect(() => {
+    const key = JSON.stringify(view.turn?.dice ?? null);
+    if (key === prevDice.current) return;
+    prevDice.current = key;
+    if (view.turn?.hasRolled && view.turn?.dice) {
+      setRolling(true);
+      const t = setTimeout(() => setRolling(false), 520);
+      return () => clearTimeout(t);
+    }
+  }, [view.turn?.dice, view.turn?.hasRolled]);
+
   const builds: { m: Mode; label: string; cost: PartialHand }[] = [
     { m: "road", label: "Road", cost: COSTS.road },
     { m: "settlement", label: "Settle", cost: COSTS.settle },
@@ -38,7 +53,7 @@ export function ActionBar({ view, isMyTurn, buildMode, onPickBuild, onRoll, onTr
         {RES_ORDER.map((r) => (
           <div key={r} style={{ position: "relative", width: 52, height: 72, borderRadius: 6, background: CARD[r], boxShadow: "0 3px 9px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.16)", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 8, border: "1px solid rgba(255,255,255,.14)", opacity: hand[r] === 0 ? 0.42 : 1 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-              <ResIcon res={r} size={15} />
+              <ResIcon res={r} size={18} onCard />
               <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 22, color: "#fff", lineHeight: 0.85, textShadow: "0 1px 3px rgba(0,0,0,.4)" }}>{hand[r]}</span>
             </div>
             <span style={{ fontSize: 8.5, fontWeight: 800, color: "rgba(255,255,255,.9)", letterSpacing: ".4px", textTransform: "uppercase" }}>{RES_NAME[r]}</span>
@@ -50,8 +65,12 @@ export function ActionBar({ view, isMyTurn, buildMode, onPickBuild, onRoll, onTr
 
       {/* dice */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Die value={view.turn?.dice?.[0] ?? 1} />
-        <Die value={view.turn?.dice?.[1] ?? 1} />
+        <span className={rolling ? "hh-die-roll" : undefined} style={{ display: "block" }}>
+          <Die value={view.turn?.dice?.[0] ?? 1} />
+        </span>
+        <span className={rolling ? "hh-die-roll" : undefined} style={{ display: "block" }}>
+          <Die value={view.turn?.dice?.[1] ?? 1} />
+        </span>
       </div>
 
       {/* actions */}

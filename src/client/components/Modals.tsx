@@ -41,6 +41,7 @@ function Stepper({ value, onDec, onInc }: { value: number; onDec: () => void; on
 
 const primary: React.CSSProperties = { background: C.terracotta, border: "none", color: "#FBF3E4", fontFamily: font.body, fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 6, cursor: "pointer" };
 const green: React.CSSProperties = { background: C.green, border: "none", color: C.cream, fontFamily: font.body, fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 6, cursor: "pointer" };
+const outline: React.CSSProperties = { flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: "#6B5A42", fontFamily: font.body, fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 6, cursor: "pointer" };
 
 export function DiscardModal({ view, send }: { view: GameView; send: Send }) {
   const need = view.pendingDiscards[view.youSeat] ?? 0;
@@ -126,31 +127,59 @@ export function TradeModal({ view, send, onClose }: { view: GameView; send: Send
         </div>
       ) : (
         <div style={{ padding: "18px 26px 24px" }}>
-          <Label>You give</Label>
-          {RES_ORDER.map((r) => (
-            <OfferRow key={r} res={r} value={offGive[r]} max={hand[r]} onDec={() => setOffGive({ ...offGive, [r]: Math.max(0, offGive[r] - 1) })} onInc={() => offGive[r] < hand[r] && setOffGive({ ...offGive, [r]: offGive[r] + 1 })} />
-          ))}
-          <div style={{ height: 1, background: C.borderSoft, margin: "12px 0" }} />
-          <Label>You receive</Label>
-          {RES_ORDER.map((r) => (
-            <OfferRow key={r} res={r} value={offGet[r]} max={99} onDec={() => setOffGet({ ...offGet, [r]: Math.max(0, offGet[r] - 1) })} onInc={() => setOffGet({ ...offGet, [r]: offGet[r] + 1 })} />
-          ))}
-          {!proposed ? (
-            <button onClick={() => send({ type: "proposeTrade", give: offGive, get: offGet })} style={{ ...green, width: "100%", marginTop: 14 }}>Send offer to table</button>
-          ) : (
-            <div style={{ marginTop: 14 }}>
-              {Object.entries(view.trade!.responses).map(([id, r]) => {
-                const seat = view.seats[+id]!;
-                return (
-                  <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0" }}>
-                    <span style={{ fontWeight: 700, color: C.ink, flex: 1 }}>{seat.name}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: r === "accept" ? C.green : r === "reject" ? "#A2854F" : C.muted }}>{r === "accept" ? "Accepted" : r === "reject" ? "Declined" : "Thinking…"}</span>
-                    {r === "accept" && <button onClick={() => send({ type: "confirmTrade", withSeat: +id })} style={{ ...green, padding: "8px 14px", fontSize: 12.5 }}>Trade</button>}
+          {proposed ? (
+            (() => {
+              const trade = view.trade!;
+              const summ = (h: typeof trade.give) =>
+                RES_ORDER.filter((r) => h[r]).map((r) => `${h[r]} ${RES_NAME[r]}`).join(", ") || "nothing";
+              const responders = Object.entries(trade.responses);
+              const anyPending = responders.some(([, r]) => r === "pending");
+              const anyAccepted = responders.some(([, r]) => r === "accept");
+              return (
+                <>
+                  <div style={{ padding: "12px 14px", background: C.panelAlt, borderRadius: 8, fontSize: 13, fontWeight: 600, color: "#5B4A34", lineHeight: 1.5, marginBottom: 12 }}>
+                    You give <b style={{ color: C.ink }}>{summ(trade.give)}</b> for <b style={{ color: C.ink }}>{summ(trade.get)}</b>.
                   </div>
-                );
-              })}
-              <button onClick={() => send({ type: "cancelTrade" })} style={{ width: "100%", marginTop: 8, background: "transparent", border: `1px solid ${C.border}`, color: "#6B5A42", fontFamily: font.body, fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 6, cursor: "pointer" }}>Cancel offer</button>
-            </div>
+                  {responders.map(([id, r]) => {
+                    const seat = view.seats[+id]!;
+                    return (
+                      <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.borderSoft}` }}>
+                        <div style={{ width: 26, height: 26, borderRadius: 5, background: seat.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontFamily: font.display, fontSize: 12 }}>{seat.name.slice(0, 1)}</div>
+                        <span style={{ fontWeight: 700, color: C.ink, flex: 1 }}>{seat.name}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: r === "accept" ? C.green : r === "reject" ? "#A2854F" : C.muted }}>{r === "accept" ? "Accepted" : r === "reject" ? "Declined" : "Thinking…"}</span>
+                        {r === "accept" && <button onClick={() => send({ type: "confirmTrade", withSeat: +id })} style={{ ...green, padding: "8px 14px", fontSize: 12.5 }}>Trade</button>}
+                      </div>
+                    );
+                  })}
+                  {!anyPending && !anyAccepted && (
+                    <div style={{ textAlign: "center", color: C.muted, fontWeight: 600, fontSize: 13, margin: "16px 0 4px" }}>Everyone passed on this offer.</div>
+                  )}
+                  <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                    <button onClick={() => send({ type: "cancelTrade" })} style={outline}>Adjust offer</button>
+                    <button onClick={() => { send({ type: "cancelTrade" }); onClose(); }} style={outline}>Close</button>
+                  </div>
+                </>
+              );
+            })()
+          ) : (
+            <>
+              <Label>You give</Label>
+              {RES_ORDER.map((r) => (
+                <OfferRow key={r} res={r} value={offGive[r]} max={hand[r]} onDec={() => setOffGive({ ...offGive, [r]: Math.max(0, offGive[r] - 1) })} onInc={() => offGive[r] < hand[r] && setOffGive({ ...offGive, [r]: offGive[r] + 1 })} />
+              ))}
+              <div style={{ height: 1, background: C.borderSoft, margin: "12px 0" }} />
+              <Label>You receive</Label>
+              {RES_ORDER.map((r) => (
+                <OfferRow key={r} res={r} value={offGet[r]} max={99} onDec={() => setOffGet({ ...offGet, [r]: Math.max(0, offGet[r] - 1) })} onInc={() => setOffGet({ ...offGet, [r]: offGet[r] + 1 })} />
+              ))}
+              <button
+                onClick={() => send({ type: "proposeTrade", give: offGive, get: offGet })}
+                disabled={RES_ORDER.every((r) => !offGive[r]) && RES_ORDER.every((r) => !offGet[r])}
+                style={{ ...green, width: "100%", marginTop: 14 }}
+              >
+                Send offer to table
+              </button>
+            </>
           )}
         </div>
       )}

@@ -41,6 +41,21 @@ export function driveBots(state: GameState): BotOutcome {
   return { state: cur, events };
 }
 
+/** Is there a bot move to make right now? Used to pace turns with a delay. */
+export function hasBotMove(state: GameState): boolean {
+  return botStep(state) !== null;
+}
+
+/** Perform exactly one bot action (or none). Lets the server broadcast each bot
+ *  move separately so players can follow the game unfolding. */
+export function stepBots(state: GameState): BotOutcome & { acted: boolean } {
+  const step = botStep(state);
+  if (!step) return { state, events: [], acted: false };
+  const res = apply(state, step.action, step.seat);
+  if (res.error || !res.state) return { state, events: [], acted: false };
+  return { state: res.state, events: res.events ?? [], acted: true };
+}
+
 interface Step {
   seat: number;
   action: Action;
