@@ -82,37 +82,34 @@ export function Board({
       {/* water */}
       <rect x={BOUNDS.x} y={BOUNDS.y} width={BOUNDS.w} height={BOUNDS.h} rx={12} fill="url(#hhwater)" />
 
-      {/* ports (per coastal vertex, offset outward) */}
-      {view.board.ports.flatMap((port, pi) =>
-        port.vertices.map((v, vi) => {
-          const p = vertexPixel(v);
-          const dx = p.x - CENTER.x,
-            dy = p.y - CENTER.y;
-          const L = Math.hypot(dx, dy) || 1;
-          const ox = p.x + (dx / L) * 18,
-            oy = p.y + (dy / L) * 18;
-          return (
-            <g key={`port-${pi}-${vi}`} pointerEvents="none">
-              <line x1={p.x} y1={p.y} x2={ox} y2={oy} stroke="rgba(243,231,205,.45)" strokeWidth={2} strokeDasharray="2 2" />
-              <circle cx={ox} cy={oy} r={11} fill="#1B2C34" stroke="rgba(243,231,205,.85)" strokeWidth={1.4} />
-              {port.type === "any" ? (
-                <text x={ox} y={oy} textAnchor="middle" dominantBaseline="central" fontFamily="Manrope" fontWeight={800} fontSize={8.5} fill="#F3E7CD">
-                  3:1
-                </text>
-              ) : (
-                <>
-                  <g transform={`translate(${ox - 5.5} ${oy - 8.5}) scale(.46)`}>
-                    <TileGlyph name={port.type} c="#F3E7CD" c2="rgba(0,0,0,.3)" />
-                  </g>
-                  <text x={ox} y={oy + 6.5} textAnchor="middle" dominantBaseline="central" fontFamily="Manrope" fontWeight={800} fontSize={6.5} fill="#EBC97A">
-                    2:1
-                  </text>
-                </>
-              )}
-            </g>
-          );
-        }),
-      )}
+      {/* ports — one harbor badge per port with two dock lines to its entry spots */}
+      {view.board.ports.map((port, pi) => {
+        const a = vertexPixel(port.vertices[0]);
+        const b = vertexPixel(port.vertices[1]);
+        const mx = (a.x + b.x) / 2,
+          my = (a.y + b.y) / 2;
+        const dx = mx - CENTER.x,
+          dy = my - CENTER.y;
+        const L = Math.hypot(dx, dy) || 1;
+        const ox = mx + (dx / L) * 26,
+          oy = my + (dy / L) * 26;
+        return (
+          <g key={`port-${pi}`} pointerEvents="none">
+            <line x1={a.x} y1={a.y} x2={ox} y2={oy} stroke="rgba(243,231,205,.5)" strokeWidth={2} strokeDasharray="2 2.5" />
+            <line x1={b.x} y1={b.y} x2={ox} y2={oy} stroke="rgba(243,231,205,.5)" strokeWidth={2} strokeDasharray="2 2.5" />
+            <circle cx={ox} cy={oy} r={13} fill="#1B2C34" stroke="rgba(243,231,205,.85)" strokeWidth={1.5} />
+            {port.type === "any" ? (
+              <text x={ox} y={oy} textAnchor="middle" dominantBaseline="central" fontFamily="Manrope" fontWeight={800} fontSize={10} fill="#F3E7CD">
+                3:1
+              </text>
+            ) : (
+              <g transform={`translate(${ox - 8} ${oy - 8}) scale(.66)`}>
+                <TileGlyph name={port.type} c="#F3E7CD" c2="rgba(0,0,0,.3)" />
+              </g>
+            )}
+          </g>
+        );
+      })}
 
       {/* hexes */}
       {Array.from({ length: HEX_COUNT }, (_, h) => {
