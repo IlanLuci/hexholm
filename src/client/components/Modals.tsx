@@ -157,7 +157,7 @@ export function TradeModal({ view, send, onClose }: { view: GameView; send: Send
                   )}
                   <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                     <button onClick={() => send({ type: "cancelTrade" })} style={outline}>Adjust offer</button>
-                    <button onClick={() => { send({ type: "cancelTrade" }); onClose(); }} style={outline}>Close</button>
+                    <button onClick={onClose} style={outline}>Close</button>
                   </div>
                 </>
               );
@@ -335,7 +335,10 @@ export function TradeOfferPrompt({ view, send }: { view: GameView; send: Send })
   const summary = (h: typeof trade.give) => RES_ORDER.filter((r) => h[r]).map((r) => `${h[r]} ${RES_NAME[r]}`).join(", ") || "nothing";
   return (
     <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 90, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: 18, width: 300, boxShadow: "0 20px 50px rgba(0,0,0,.35)" }}>
-      <div style={{ fontWeight: 800, color: C.ink, marginBottom: 6 }}>{from.name} offers a trade</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <span style={{ fontWeight: 800, color: C.ink }}>{from.name} offers a trade</span>
+        <span onClick={() => send({ type: "respondTrade", accept: false })} title="Dismiss (decline)" style={{ cursor: "pointer", color: C.gold, fontSize: 20, lineHeight: 1 }}>×</span>
+      </div>
       <div style={{ fontSize: 12.5, color: C.muted, fontWeight: 600, lineHeight: 1.5 }}>They give <b style={{ color: C.ink }}>{summary(trade.give)}</b> for your <b style={{ color: C.ink }}>{summary(trade.get)}</b>.</div>
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <button onClick={() => send({ type: "respondTrade", accept: true })} style={{ ...green, flex: 1, fontSize: 13, padding: 10 }}>Accept</button>

@@ -145,7 +145,17 @@ export function GameScreen({ game, view }: { game: Game; view: GameView }) {
       {/* modals */}
       {owesDiscard && <DiscardModal view={view} send={send} />}
       {view.steal && isMyTurn && <StealModal view={view} send={send} />}
-      {modal === "trade" && <TradeModal view={view} send={send} onClose={() => setModal(null)} />}
+      {modal === "trade" && (
+        <TradeModal
+          view={view}
+          send={send}
+          onClose={() => {
+            // closing with your own offer still on the table withdraws it
+            if (view.trade && view.trade.from === view.youSeat) send({ type: "cancelTrade" });
+            setModal(null);
+          }}
+        />
+      )}
       {modal === "dev" && (
         <DevModal
           view={view}
