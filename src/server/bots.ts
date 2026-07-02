@@ -7,6 +7,7 @@ import {
   EDGE_COUNT,
   hexVertices,
   vertexHexes,
+  vertexAdjacent,
   edgeVertices,
 } from "../shared/board";
 import {
@@ -14,6 +15,7 @@ import {
   canPlaceRoad,
   buildingOwnerAt,
   legalRobberHexes,
+  tradeRatio,
 } from "../shared/legal";
 import { victoryPoints } from "../shared/scoring";
 
@@ -32,10 +34,10 @@ export function driveBots(state: GameState): BotOutcome {
   for (let i = 0; i < STEP_CAP; i++) {
     const step = botStep(cur);
     if (!step) break;
-    const res = apply(cur, step.action, step.seat);
-    if (res.error || !res.state) break; // defensive: never loop on a rejected move
-    cur = res.state;
-    if (res.events) events.push(...res.events);
+    const done = performStep(cur, step);
+    if (!done) break;
+    cur = done.state;
+    events.push(...done.events);
     if (cur.phase === "finished") break;
   }
   return { state: cur, events };
@@ -51,9 +53,25 @@ export function hasBotMove(state: GameState): boolean {
 export function stepBots(state: GameState): BotOutcome & { acted: boolean } {
   const step = botStep(state);
   if (!step) return { state, events: [], acted: false };
+  const done = performStep(state, step);
+  if (!done) return { state, events: [], acted: false };
+  return { state: done.state, events: done.events, acted: true };
+}
+
+/** Apply one bot step; if it's somehow rejected on a bot's play turn, fall back
+ *  to ending the turn so the game can never stall on a bad heuristic. */
+function performStep(state: GameState, step: Step): BotOutcome | null {
   const res = apply(state, step.action, step.seat);
-  if (res.error || !res.state) return { state, events: [], acted: false };
-  return { state: res.state, events: res.events ?? [], acted: true };
+  if (!res.error && res.state) return { state: res.state, events: res.events ?? [] };
+  if (
+    state.phase === "play" &&
+    isBot(state, state.activeSeat) &&
+    step.action.type !== "endTurn"
+  ) {
+    const end = apply(state, { type: "endTurn" }, state.activeSeat);
+    if (!end.error && end.state) return { state: end.state, events: end.events ?? [] };
+  }
+  return null;
 }
 
 interface Step {
@@ -71,12 +89,12 @@ function botStep(state: GameState): Step | null {
     const seat = Number(seatStr);
     if (isBot(state, seat)) return { seat, action: botDiscard(state.seats[seat]!, need) };
   }
-  // 2. bots responding to an open (human) trade offer — decline in v1
+  // 2. bots responding to an open trade offer — accept only if clearly good
   if (state.trade) {
     for (const [seatStr, resp] of Object.entries(state.trade.responses)) {
       const seat = Number(seatStr);
       if (resp === "pending" && isBot(state, seat))
-        return { seat, action: { type: "respondTrade", accept: false } };
+        return { seat, action: { type: "respondTrade", accept: acceptsTrade(state, seat) } };
     }
   }
   // 3. active bot must choose a steal target
@@ -113,12 +131,13 @@ function botDiscard(seat: Seat, need: number): Action {
   return { type: "discard", hand };
 }
 
-// ---- setup ----
+// ---- shared valuation ----
 
 function pipValue(num: number | null): number {
   return num == null ? 0 : 6 - Math.abs(7 - num);
 }
 
+/** Expected value of a settlement spot: pip strength + resource diversity. */
 function vertexScore(state: GameState, v: number): number {
   let score = 0;
   const seen = new Set<Resource>();
@@ -134,79 +153,19 @@ function vertexScore(state: GameState, v: number): number {
   return score;
 }
 
-function setupMove(state: GameState, seat: number): Action {
-  const setup = state.setup!;
-  if (setup.step === "settle") {
-    let best = -1;
-    let bestScore = -1;
-    for (let v = 0; v < VERTEX_COUNT; v++) {
-      if (!canPlaceSettlement(state, seat, v, { setup: true })) continue;
-      const s = vertexScore(state, v);
-      if (s > bestScore) {
-        bestScore = s;
-        best = v;
-      }
-    }
-    return { type: "placeSettlement", vertex: best };
-  }
-  // road: pick a legal edge touching the just-placed settlement
-  for (let e = 0; e < EDGE_COUNT; e++)
-    if (canPlaceRoad(state, seat, e, { mustTouchVertex: setup.lastVertex }))
-      return { type: "placeRoad", edge: e };
-  return { type: "placeRoad", edge: 0 }; // unreachable in a valid setup
-}
-
-// ---- play ----
-
-function canAfford(seat: Seat, cost: PartialHand): boolean {
-  return RESOURCES.every((r) => seat.resources[r] >= (cost[r] ?? 0));
-}
-
-function playMove(state: GameState, seat: number): Action {
-  const turn = state.turn!;
-  if (turn.mustMoveRobber) return robberMove(state, seat);
-  if (!turn.hasRolled) return { type: "rollDice" };
-  const build = chooseBuild(state, seat);
-  return build ?? { type: "endTurn" };
-}
-
-function chooseBuild(state: GameState, seat: number): Action | null {
+function resourcesOwned(state: GameState, seat: number): Set<Resource> {
+  const owned = new Set<Resource>();
   const me = state.seats[seat]!;
-
-  // 1. upgrade the best settlement to a city
-  if (me.buildings.cities.length < SUPPLY.cities && canAfford(me, COSTS.city)) {
-    const target = bestBy(me.buildings.settlements, (v) => vertexScore(state, v));
-    if (target != null) return { type: "buildCity", vertex: target };
-  }
-
-  // 2. build a settlement on the best legal spot
-  if (me.buildings.settlements.length < SUPPLY.settlements && canAfford(me, COSTS.settle)) {
-    const spots: number[] = [];
-    for (let v = 0; v < VERTEX_COUNT; v++)
-      if (canPlaceSettlement(state, seat, v, { setup: false })) spots.push(v);
-    const target = bestBy(spots, (v) => vertexScore(state, v));
-    if (target != null) return { type: "buildSettlement", vertex: target };
-  }
-
-  // 3. build a road that opens a promising new settlement frontier
-  if (me.buildings.roads.length < SUPPLY.roads && canAfford(me, COSTS.road)) {
-    const road = roadTowardFrontier(state, seat);
-    if (road != null) return { type: "buildRoad", edge: road };
-  }
-
-  // 4. buy a development card when flush (fuels knights / VP cards)
-  if (state.devDeck.length > 0 && canAfford(me, COSTS.dev) && handTotal(me.resources) >= 3)
-    return { type: "buyDev" };
-
-  // 5. play a knight if it helps (own an unplayed knight and it's worthwhile)
-  if (!turnPlayedDev(state) && me.devCards.includes("knight"))
-    return robberMoveAsKnight(state, seat);
-
-  return null;
+  for (const v of [...me.buildings.settlements, ...me.buildings.cities])
+    for (const h of vertexHexes(v)) {
+      const t = state.board.tiles[h]!;
+      if (t.terrain !== "desert") owned.add(t.terrain as Resource);
+    }
+  return owned;
 }
 
-function turnPlayedDev(state: GameState): boolean {
-  return state.turn?.devPlayedThisTurn ?? false;
+function touchesPort(state: GameState, vertex: number): boolean {
+  return state.board.ports.some((p) => p.vertices.includes(vertex));
 }
 
 function bestBy<T>(items: T[], score: (t: T) => number): T | null {
@@ -220,6 +179,163 @@ function bestBy<T>(items: T[], score: (t: T) => number): T | null {
     }
   }
   return best;
+}
+
+// ---- setup ----
+
+function setupMove(state: GameState, seat: number): Action {
+  const setup = state.setup!;
+  if (setup.step === "settle") {
+    const owned = resourcesOwned(state, seat);
+    let best = -1;
+    let bestScore = -Infinity;
+    for (let v = 0; v < VERTEX_COUNT; v++) {
+      if (!canPlaceSettlement(state, seat, v, { setup: true })) continue;
+      let s = vertexScore(state, v);
+      // value covering resources we don't yet produce (round-2 complementarity)
+      for (const h of vertexHexes(v)) {
+        const t = state.board.tiles[h]!;
+        if (t.terrain !== "desert" && !owned.has(t.terrain as Resource)) s += 2;
+      }
+      if (touchesPort(state, v)) s += 1;
+      if (s > bestScore) {
+        bestScore = s;
+        best = v;
+      }
+    }
+    return { type: "placeSettlement", vertex: best };
+  }
+  // road: head toward the best nearby empty frontier from the new settlement
+  let best = -1;
+  let bestScore = -Infinity;
+  for (let e = 0; e < EDGE_COUNT; e++) {
+    if (!canPlaceRoad(state, seat, e, { mustTouchVertex: setup.lastVertex })) continue;
+    const [a, b] = edgeVertices(e);
+    const far = a === setup.lastVertex ? b : a;
+    let s = 0;
+    for (const nv of vertexAdjacent(far))
+      if (buildingOwnerAt(state, nv) === null) s = Math.max(s, vertexScore(state, nv));
+    if (s > bestScore) {
+      bestScore = s;
+      best = e;
+    }
+  }
+  return { type: "placeRoad", edge: best >= 0 ? best : 0 };
+}
+
+// ---- play ----
+
+function canAfford(seat: Seat, cost: PartialHand): boolean {
+  return RESOURCES.every((r) => seat.resources[r] >= (cost[r] ?? 0));
+}
+
+function turnPlayedDev(state: GameState): boolean {
+  return state.turn?.devPlayedThisTurn ?? false;
+}
+
+function playMove(state: GameState, seat: number): Action {
+  const turn = state.turn!;
+  if (turn.mustMoveRobber) return robberMove(state, seat);
+  if (!turn.hasRolled) return { type: "rollDice" };
+  return turnAction(state, seat) ?? { type: "endTurn" };
+}
+
+function bestSettlementSpot(state: GameState, seat: number): number | null {
+  if (state.seats[seat]!.buildings.settlements.length >= SUPPLY.settlements) return null;
+  const spots: number[] = [];
+  for (let v = 0; v < VERTEX_COUNT; v++)
+    if (canPlaceSettlement(state, seat, v, { setup: false })) spots.push(v);
+  return bestBy(spots, (v) => vertexScore(state, v));
+}
+
+function bestCitySpot(state: GameState, seat: number): number | null {
+  if (state.seats[seat]!.buildings.cities.length >= SUPPLY.cities) return null;
+  return bestBy(state.seats[seat]!.buildings.settlements, (v) => vertexScore(state, v));
+}
+
+/** One bot action for the current (post-roll) turn, or null to end the turn. */
+function turnAction(state: GameState, seat: number): Action | null {
+  const me = state.seats[seat]!;
+  const settleSpot = bestSettlementSpot(state, seat);
+  const citySpot = bestCitySpot(state, seat);
+
+  // 1. build now if we can afford it — expansion first, then cities
+  if (settleSpot != null && canAfford(me, COSTS.settle))
+    return { type: "buildSettlement", vertex: settleSpot };
+  if (citySpot != null && canAfford(me, COSTS.city))
+    return { type: "buildCity", vertex: citySpot };
+
+  // 2. bank/harbor-trade our surplus toward the best reachable build
+  if (settleSpot != null) {
+    const t = planTradeToward(state, seat, COSTS.settle);
+    if (t) return t;
+  }
+  if (citySpot != null) {
+    const t = planTradeToward(state, seat, COSTS.city);
+    if (t) return t;
+  }
+
+  // 3. buy a development card when hoarding or with nothing better to build
+  const flush = handTotal(me.resources) >= 7;
+  if (state.devDeck.length > 0 && canAfford(me, COSTS.dev) && (flush || (settleSpot == null && citySpot == null)))
+    return { type: "buyDev" };
+
+  // 4. build a road toward new land when we can expand but have no open spot yet
+  if (
+    settleSpot == null &&
+    me.buildings.settlements.length < SUPPLY.settlements &&
+    me.buildings.roads.length < SUPPLY.roads &&
+    canAfford(me, COSTS.road)
+  ) {
+    const road = roadTowardFrontier(state, seat);
+    if (road != null) return { type: "buildRoad", edge: road };
+  }
+
+  // 5. play a knight when it's genuinely worthwhile
+  if (!turnPlayedDev(state) && me.devCards.includes("knight") && knightWorthwhile(state, seat))
+    return robberMoveAsKnight(state, seat);
+
+  return null;
+}
+
+/** Resources still needed to afford `cost`. */
+function deficitFor(seat: Seat, cost: PartialHand): PartialHand {
+  const d: PartialHand = {};
+  for (const r of RESOURCES) {
+    const n = (cost[r] ?? 0) - seat.resources[r];
+    if (n > 0) d[r] = n;
+  }
+  return d;
+}
+
+/** If bank/harbor-trading surplus can reach `cost`, return the next such trade. */
+function planTradeToward(state: GameState, seat: number, cost: PartialHand): Action | null {
+  const me = state.seats[seat]!;
+  if (canAfford(me, cost)) return null;
+  const need = deficitFor(me, cost);
+  const totalNeed = RESOURCES.reduce((s, r) => s + (need[r] ?? 0), 0);
+
+  let potential = 0;
+  const givers: { r: Resource; ratio: number; capacity: number }[] = [];
+  for (const r of RESOURCES) {
+    const spare = me.resources[r] - (cost[r] ?? 0);
+    if (spare <= 0) continue;
+    const ratio = tradeRatio(state, seat, r);
+    const capacity = Math.floor(spare / ratio);
+    if (capacity > 0) {
+      potential += capacity;
+      givers.push({ r, ratio, capacity });
+    }
+  }
+  if (potential < totalNeed) return null; // can't complete the build — don't waste a trade
+
+  const give = bestBy(givers, (g) => g.capacity);
+  // only ask for a needed resource the bank can actually supply
+  const get = RESOURCES.filter((r) => need[r] && state.bank[r] > 0).sort(
+    (a, b) => (need[b] ?? 0) - (need[a] ?? 0),
+  )[0];
+  if (!give || !get || give.r === get) return null;
+  return { type: "bankTrade", give: give.r, get };
 }
 
 /** A legal road whose endpoints reach an unclaimed, high-value frontier vertex. */
@@ -240,6 +356,51 @@ function roadTowardFrontier(state: GameState, seat: number): number | null {
     }
   }
   return best;
+}
+
+function knightWorthwhile(state: GameState, seat: number): boolean {
+  const me = state.seats[seat]!;
+  // chasing / holding largest army
+  const knights = me.playedKnights + 1;
+  const holder = state.awards.largestArmy;
+  const holderKnights = holder == null ? 0 : state.seats[holder]!.playedKnights;
+  if (knights >= 3 && (holder === seat || knights > holderKnights)) return true;
+  // robber squatting on our own hex — dislodge it
+  const myVerts = new Set<number>([...me.buildings.settlements, ...me.buildings.cities]);
+  if (hexVertices(state.robberHex).some((v) => myVerts.has(v))) return true;
+  return false;
+}
+
+// ---- responding to player trade offers ----
+
+/** Accept only fair offers that fill a real need with genuine surplus, and never
+ *  hand resources to a player who is about to win. */
+function acceptsTrade(state: GameState, seat: number): boolean {
+  const trade = state.trade!;
+  const me = state.seats[seat]!;
+  const giveOut = trade.get; // what the responder gives up
+  const getIn = trade.give; // what the responder receives
+
+  if (!RESOURCES.every((r) => me.resources[r] >= (giveOut[r] ?? 0))) return false; // can't fulfil
+  if (victoryPoints(state, trade.from) >= 8) return false; // don't fuel a near-winner
+
+  const outTotal = RESOURCES.reduce((s, r) => s + (giveOut[r] ?? 0), 0);
+  const inTotal = RESOURCES.reduce((s, r) => s + (getIn[r] ?? 0), 0);
+  if (outTotal > inTotal) return false; // never come out behind on card count
+
+  // pick the build we're pursuing and judge usefulness against it
+  const target =
+    bestSettlementSpot(state, seat) != null
+      ? COSTS.settle
+      : bestCitySpot(state, seat) != null
+        ? COSTS.city
+        : COSTS.city;
+  const need = deficitFor(me, target);
+  const usefulIn = RESOURCES.some((r) => (getIn[r] ?? 0) > 0 && (need[r] ?? 0) > 0);
+  const safeOut = RESOURCES.every(
+    (r) => (giveOut[r] ?? 0) <= Math.max(0, me.resources[r] - (target[r] ?? 0)),
+  );
+  return usefulIn && safeOut;
 }
 
 // ---- robber ----

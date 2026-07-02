@@ -124,7 +124,16 @@ export function TradeModal({ view, send, onClose }: { view: GameView; send: Send
           <div style={{ marginTop: 18, padding: "12px 14px", background: C.panelAlt, borderRadius: 6, textAlign: "center", fontWeight: 700, fontSize: 13, color: "#6B5A42" }}>
             Give {ratio} {RES_NAME[give]} → 1 {RES_NAME[get]}
           </div>
-          <button onClick={() => send({ type: "bankTrade", give, get })} style={{ ...primary, width: "100%", marginTop: 14, opacity: hand[give] >= ratio ? 1 : 0.5 }}>Confirm trade</button>
+          <button
+            onClick={() => {
+              if (hand[give] < ratio) return;
+              send({ type: "bankTrade", give, get });
+              onClose();
+            }}
+            style={{ ...primary, width: "100%", marginTop: 14, opacity: hand[give] >= ratio ? 1 : 0.5 }}
+          >
+            Confirm trade
+          </button>
         </div>
       ) : (
         <div style={{ padding: "18px 26px 24px" }}>

@@ -29,8 +29,18 @@ test("a table of bots drives the game to a winner", () => {
 });
 
 test("bots never leave the game in a stuck play state within the step budget", () => {
-  for (const seed of ["s1", "s2", "s3"]) {
+  for (const seed of ["s1", "s2", "s3", "s4", "s5", "s6"]) {
     const { state } = driveBots(allBotGame(seed));
     expect(state.phase).toBe("finished");
   }
+});
+
+test("bots use bank/harbor trades to complete builds", () => {
+  // across a few games at least one bank trade (to === -1) should occur
+  let sawBankTrade = false;
+  for (const seed of ["t1", "t2", "t3", "t4"]) {
+    const { events } = driveBots(allBotGame(seed));
+    if (events.some((e) => e.type === "trade" && e.to === -1)) sawBankTrade = true;
+  }
+  expect(sawBankTrade).toBe(true);
 });
