@@ -30,20 +30,26 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (request.headers.get("Upgrade") !== "websocket")
-      return new Response("Expected WebSocket", { status: 426 });
+    try {
+      if (request.headers.get("Upgrade") !== "websocket")
+        return new Response("Expected WebSocket", { status: 426 });
 
-    const url = new URL(request.url);
-    const code = (url.searchParams.get("code") ?? "ROOM").toUpperCase();
-    if (!this.game) {
-      this.game = createLobby(code, crypto.randomUUID());
-      await this.persist();
+      const url = new URL(request.url);
+      const m = url.pathname.match(/\/api\/room\/([A-Za-z0-9]+)\/ws/);
+      const code = (m?.[1] ?? url.searchParams.get("code") ?? "ROOM").toUpperCase();
+      if (!this.game) {
+        this.game = createLobby(code, crypto.randomUUID());
+        await this.persist();
+      }
+
+      const pair = new WebSocketPair();
+      const [client, server] = [pair[0], pair[1]];
+      this.ctx.acceptWebSocket(server);
+      return new Response(null, { status: 101, webSocket: client });
+    } catch (e) {
+      console.error("GameRoom.fetch failed:", (e as Error).stack ?? e);
+      return new Response("Room error", { status: 500 });
     }
-
-    const pair = new WebSocketPair();
-    const [client, server] = [pair[0], pair[1]];
-    this.ctx.acceptWebSocket(server);
-    return new Response(null, { status: 101, webSocket: client });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {

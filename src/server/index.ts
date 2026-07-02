@@ -23,10 +23,10 @@ export default {
     const wsMatch = url.pathname.match(/^\/api\/room\/([A-Za-z0-9]+)\/ws$/);
     if (wsMatch) {
       const code = wsMatch[1]!.toUpperCase();
-      const stub = env.GAME_ROOM.getByName(code);
-      const fwd = new URL(request.url);
-      fwd.searchParams.set("code", code);
-      return stub.fetch(new Request(fwd, request));
+      const id = env.GAME_ROOM.idFromName(code);
+      const stub = env.GAME_ROOM.get(id);
+      // Forward the original request untouched so the WebSocket upgrade survives.
+      return stub.fetch(request);
     }
 
     // Everything else: static SPA assets.
