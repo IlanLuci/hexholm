@@ -173,7 +173,8 @@ export class GameRoom extends DurableObject<Env> {
       this.game = next;
       seatId = next.seats.length - 1;
       this.game.seats[seatId]!.connected = true;
-      this.report((s) => s.recordJoin());
+      const pid = msg.playerId;
+      this.report((s) => s.recordJoin(pid));
     }
 
     const token = msg.sessionToken && known != null ? msg.sessionToken : crypto.randomUUID();

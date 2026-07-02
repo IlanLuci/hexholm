@@ -2,7 +2,6 @@ import { DurableObject } from "cloudflare:workers";
 import type { FinishedGame, PlayerCareer, StatsSnapshot } from "./protocol";
 
 interface Totals {
-  humansJoined: number;
   gamesStarted: number;
   gamesFinished: number;
   totalMatchMs: number;
@@ -38,7 +37,6 @@ const RECENT_CAP = 20;
  *  rooms report lifecycle events to it via RPC. */
 export class StatsHub extends DurableObject {
   private totals: Totals = {
-    humansJoined: 0,
     gamesStarted: 0,
     gamesFinished: 0,
     totalMatchMs: 0,
@@ -46,6 +44,7 @@ export class StatsHub extends DurableObject {
   };
   private presence: Record<string, Presence> = {};
   private players: Record<string, PlayerStats> = {};
+  private uniquePlayers: Record<string, true> = {}; // set of player ids ever seen
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
@@ -53,6 +52,7 @@ export class StatsHub extends DurableObject {
       this.totals = (await ctx.storage.get<Totals>("totals")) ?? this.totals;
       this.presence = (await ctx.storage.get<Record<string, Presence>>("presence")) ?? {};
       this.players = (await ctx.storage.get<Record<string, PlayerStats>>("players")) ?? {};
+      this.uniquePlayers = (await ctx.storage.get<Record<string, true>>("uniquePlayers")) ?? {};
     });
   }
 
@@ -88,9 +88,11 @@ export class StatsHub extends DurableObject {
     };
   }
 
-  async recordJoin(): Promise<void> {
-    this.totals.humansJoined++;
-    await this.ctx.storage.put("totals", this.totals);
+  /** Count a player as unique by their persistent id (dedupes rejoins/new games). */
+  async recordJoin(playerId?: string): Promise<void> {
+    if (!playerId || this.uniquePlayers[playerId]) return;
+    this.uniquePlayers[playerId] = true;
+    await this.ctx.storage.put("uniquePlayers", this.uniquePlayers);
   }
 
   async recordGameStart(): Promise<void> {
@@ -125,7 +127,7 @@ export class StatsHub extends DurableObject {
       if (p.phase === "setup" || p.phase === "play") activeGames++;
     }
     return {
-      humansJoined: this.totals.humansJoined,
+      uniquePlayers: Object.keys(this.uniquePlayers).length,
       gamesStarted: this.totals.gamesStarted,
       gamesFinished: this.totals.gamesFinished,
       avgMatchMs: this.totals.gamesFinished

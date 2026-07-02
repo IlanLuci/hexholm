@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { C, font } from "../theme";
 import { HexLogo } from "../components/icons";
+import { useCareer, ProfileTooltip } from "../components/Profile";
 import type { Game } from "../net";
 import type { GameView } from "../../server/protocol";
 
 export function Lobby({ game, view }: { game: Game; view: GameView }) {
   const me = view.seats[view.youSeat];
   const allReady = view.seats.length >= 2 && view.seats.every((s) => s.ready);
+  const career = useCareer("lobby");
+  const [hoverSeat, setHoverSeat] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const inviteLink = `${location.origin}/?room=${view.roomCode}`;
   const copy = (text: string, label: string) => {
@@ -50,8 +53,13 @@ export function Lobby({ game, view }: { game: Game; view: GameView }) {
 
             {view.seats.map((seat) => (
               <div key={seat.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: `1px solid ${C.borderSoft}` }}>
-                <div style={{ width: 38, height: 38, borderRadius: 5, background: seat.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 15, fontFamily: font.display, flexShrink: 0 }}>
+                <div
+                  onMouseEnter={seat.isYou ? () => setHoverSeat(seat.id) : undefined}
+                  onMouseLeave={seat.isYou ? () => setHoverSeat(null) : undefined}
+                  style={{ position: "relative", width: 38, height: 38, borderRadius: 5, background: seat.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 15, fontFamily: font.display, flexShrink: 0, cursor: seat.isYou ? "pointer" : "default" }}
+                >
                   {seat.name.slice(0, 1).toUpperCase()}
+                  {seat.isYou && hoverSeat === seat.id && <ProfileTooltip career={career} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14.5, color: C.ink }}>

@@ -78,7 +78,7 @@ export interface FinishedGame {
 }
 
 export interface StatsSnapshot {
-  humansJoined: number;
+  uniquePlayers: number;
   gamesStarted: number;
   gamesFinished: number;
   avgMatchMs: number;

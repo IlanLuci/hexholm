@@ -99,7 +99,7 @@ export function AdminDashboard() {
     ? [
         { label: "Players online", value: String(stats.onlinePlayers) },
         { label: "Active games", value: String(stats.activeGames) },
-        { label: "Players joined", value: String(stats.humansJoined), hint: "all-time" },
+        { label: "Unique players", value: String(stats.uniquePlayers), hint: "all-time" },
         { label: "Games started", value: String(stats.gamesStarted) },
         { label: "Games completed", value: String(stats.gamesFinished) },
         { label: "Avg. match time", value: fmtDuration(stats.avgMatchMs) },
