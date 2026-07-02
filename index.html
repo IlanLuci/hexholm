@@ -30,6 +30,13 @@
       .hh-appear { transform-box: fill-box; transform-origin: center; animation: hhpop .32s ease both; }
       .hh-fadeup { animation: hhfadeup .28s ease both; }
       .hh-die-roll { animation: hhshake .5s ease; }
+      @keyframes hhdelta { 0% { transform: translate(-50%, 4px); opacity: 0; } 18% { opacity: 1; } 100% { transform: translate(-50%, -24px); opacity: 0; } }
+      @keyframes hhgain { 0%,100% { box-shadow: 0 3px 9px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.16); } 35% { box-shadow: 0 0 0 3px rgba(143,191,106,.95), 0 4px 14px rgba(143,191,106,.55); } }
+      @keyframes hhloss { 0%,100% { box-shadow: 0 3px 9px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.16); } 35% { box-shadow: 0 0 0 3px rgba(206,92,64,.95), 0 4px 14px rgba(206,92,64,.55); } }
+      .hh-gain { animation: hhgain .9s ease; }
+      .hh-loss { animation: hhloss .9s ease; }
+      @keyframes hhcardpulse { 0%,100% { box-shadow: none; } 40% { box-shadow: 0 0 0 2px rgba(217,164,65,.8); } }
+      .hh-pulse { animation: hhcardpulse .8s ease; }
     </style>
   </head>
   <body>

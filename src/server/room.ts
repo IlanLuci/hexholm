@@ -6,8 +6,15 @@ import { toView } from "./views";
 import { hasBotMove, stepBots } from "./bots";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
-/** Delay between successive bot actions so players can follow the game. */
-const BOT_DELAY_MS = 650;
+/** Pacing between bot actions so players can follow the game in real time.
+ *  A bigger beat follows the moments that matter most (rolls, builds, steals). */
+const BOT_DELAY_MS = 1300;
+function delayAfter(events: GameEvent[]): number {
+  if (events.some((e) => e.type === "rolled")) return 2100; // let production register
+  if (events.some((e) => ["built", "stole", "played", "boughtDev", "trade"].includes(e.type)))
+    return 1700;
+  return BOT_DELAY_MS;
+}
 
 export interface Env {
   GAME_ROOM: DurableObjectNamespace<GameRoom>;
@@ -131,10 +138,10 @@ export class GameRoom extends DurableObject<Env> {
     await this.scheduleBots();
   }
 
-  /** Schedule the next bot move (paced) if one is pending. */
-  private async scheduleBots(): Promise<void> {
+  /** Schedule the next bot move after `delay` ms if one is pending. */
+  private async scheduleBots(delay = BOT_DELAY_MS): Promise<void> {
     if (this.game && hasBotMove(this.game))
-      await this.ctx.storage.setAlarm(Date.now() + BOT_DELAY_MS);
+      await this.ctx.storage.setAlarm(Date.now() + delay);
   }
 
   /** Fired by the scheduled alarm: play one bot action, broadcast, reschedule. */
@@ -146,7 +153,7 @@ export class GameRoom extends DurableObject<Env> {
     await this.persist();
     this.broadcastState();
     if (outcome.events.length) this.broadcastEvents(outcome.events);
-    await this.scheduleBots();
+    await this.scheduleBots(delayAfter(outcome.events));
   }
 
   private broadcastState(): void {

@@ -40,6 +40,25 @@ export function ActionBar({ view, isMyTurn, buildMode, onPickBuild, onRoll, onTr
     }
   }, [view.turn?.dice, view.turn?.hasRolled]);
 
+  // flash cards + float a delta when your hand changes (gain / spend / steal)
+  const [flash, setFlash] = useState<{ id: number; d: Record<Resource, number> }>({
+    id: 0,
+    d: { brick: 0, wood: 0, sheep: 0, wheat: 0, ore: 0 },
+  });
+  const prevHand = useRef(hand);
+  const handKey = RES_ORDER.map((r) => hand[r]).join(",");
+  useEffect(() => {
+    const d = {} as Record<Resource, number>;
+    let any = false;
+    for (const r of RES_ORDER) {
+      d[r] = hand[r] - prevHand.current[r];
+      if (d[r] !== 0) any = true;
+    }
+    prevHand.current = { ...hand };
+    if (any) setFlash((f) => ({ id: f.id + 1, d }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handKey]);
+
   const builds: { m: Mode; label: string; cost: PartialHand }[] = [
     { m: "road", label: "Road", cost: COSTS.road },
     { m: "settlement", label: "Settle", cost: COSTS.settle },
@@ -50,15 +69,24 @@ export function ActionBar({ view, isMyTurn, buildMode, onPickBuild, onRoll, onTr
     <div style={{ background: C.tealDark, borderTop: "1px solid rgba(255,255,255,.07)", padding: "13px 20px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
       {/* hand */}
       <div style={{ display: "flex", gap: 7 }}>
-        {RES_ORDER.map((r) => (
-          <div key={r} style={{ position: "relative", width: 52, height: 72, borderRadius: 6, background: CARD[r], boxShadow: "0 3px 9px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.16)", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 8, border: "1px solid rgba(255,255,255,.14)", opacity: hand[r] === 0 ? 0.42 : 1 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-              <ResIcon res={r} size={18} onCard />
-              <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 22, color: "#fff", lineHeight: 0.85, textShadow: "0 1px 3px rgba(0,0,0,.4)" }}>{hand[r]}</span>
+        {RES_ORDER.map((r) => {
+          const delta = flash.d[r];
+          const cls = delta > 0 ? "hh-gain" : delta < 0 ? "hh-loss" : undefined;
+          return (
+            <div key={`${r}-${flash.id}`} className={cls} style={{ position: "relative", width: 52, height: 72, borderRadius: 6, background: CARD[r], boxShadow: "0 3px 9px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.16)", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 8, border: "1px solid rgba(255,255,255,.14)", opacity: hand[r] === 0 ? 0.42 : 1 }}>
+              {delta !== 0 && (
+                <span style={{ position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)", fontFamily: font.display, fontWeight: 800, fontSize: 15, color: delta > 0 ? "#8FBF6A" : "#E08C74", textShadow: "0 1px 3px rgba(0,0,0,.5)", animation: "hhdelta 1.1s ease forwards", pointerEvents: "none", whiteSpace: "nowrap" }}>
+                  {delta > 0 ? `+${delta}` : delta}
+                </span>
+              )}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <ResIcon res={r} size={18} onCard />
+                <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 22, color: "#fff", lineHeight: 0.85, textShadow: "0 1px 3px rgba(0,0,0,.4)" }}>{hand[r]}</span>
+              </div>
+              <span style={{ fontSize: 8.5, fontWeight: 800, color: "rgba(255,255,255,.9)", letterSpacing: ".4px", textTransform: "uppercase" }}>{RES_NAME[r]}</span>
             </div>
-            <span style={{ fontSize: 8.5, fontWeight: 800, color: "rgba(255,255,255,.9)", letterSpacing: ".4px", textTransform: "uppercase" }}>{RES_NAME[r]}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div style={{ width: 1, height: 52, background: "rgba(255,255,255,.1)" }} />

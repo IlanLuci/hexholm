@@ -118,6 +118,7 @@ export function TradeModal({ view, send, onClose }: { view: GameView; send: Send
         <div style={{ padding: "18px 26px 24px" }}>
           <Label>You give ({ratio}:1)</Label>
           <Row>{RES_ORDER.map((r) => <button key={r} onClick={() => setGive(r)} style={chip(give === r)}><ResIcon res={r} size={14} />{RES_NAME[r]}<span style={{ opacity: 0.5, fontSize: 11 }}>{hand[r]}</span></button>)}</Row>
+          <div style={{ height: 22 }} />
           <Label>You receive</Label>
           <Row>{RES_ORDER.map((r) => <button key={r} onClick={() => setGet(r)} style={chip(get === r)}><ResIcon res={r} size={14} />{RES_NAME[r]}</button>)}</Row>
           <div style={{ marginTop: 18, padding: "12px 14px", background: C.panelAlt, borderRadius: 6, textAlign: "center", fontWeight: 700, fontSize: 13, color: "#6B5A42" }}>
@@ -191,7 +192,10 @@ function OfferRow({ res, value, max, onDec, onInc }: { res: Resource; value: num
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
       <span style={{ background: C.panelAlt, borderRadius: 6, padding: 4, display: "inline-flex" }}><ResIcon res={res} size={16} /></span>
-      <span style={{ fontWeight: 700, fontSize: 13.5, color: "#3B2E1E", flex: 1 }}>{RES_NAME[res]} <span style={{ color: C.muted, fontSize: 11 }}>({max === 99 ? "" : max})</span></span>
+      <span style={{ fontWeight: 700, fontSize: 13.5, color: "#3B2E1E", flex: 1 }}>
+        {RES_NAME[res]}
+        {max !== 99 && <span style={{ color: C.muted, fontSize: 11 }}> ({max})</span>}
+      </span>
       <Stepper value={value} onDec={onDec} onInc={onInc} />
     </div>
   );
