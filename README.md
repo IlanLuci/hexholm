@@ -55,11 +55,15 @@ Open two browser tabs (or share the room code) to play against another human; us
 ## Deploy
 
 ```bash
-npm run deploy     # builds the client, then `wrangler deploy`
+wrangler login                       # first time only
+wrangler secret put ADMIN_KEY        # set the admin dashboard key (required for /admin)
+npm run deploy                       # builds the client, then `wrangler deploy`
 ```
 
-Requires a Cloudflare account (`wrangler login`). Durable Objects with SQLite
-storage are configured in `wrangler.jsonc`.
+Requires a Cloudflare account. Durable Objects with SQLite storage are configured in
+`wrangler.jsonc`. The admin key is **not** committed: locally it comes from `.dev.vars`
+(git-ignored), and in production from the `ADMIN_KEY` secret. If no key is set, `/admin`
+stays locked (401).
 
 ## Rules implemented
 

@@ -18,6 +18,7 @@
     { "tag": "v1", "new_sqlite_classes": ["GameRoom"] },
     { "tag": "v2", "new_sqlite_classes": ["StatsHub"] }
   ],
-  "vars": { "ADMIN_KEY": "hexholm-admin" },
   "observability": { "enabled": true }
+  // ADMIN_KEY is NOT set here. Locally it comes from .dev.vars; in production set it
+  // with `wrangler secret put ADMIN_KEY`. With no key set, /admin stays locked (401).
 }
