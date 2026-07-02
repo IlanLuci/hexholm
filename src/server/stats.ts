@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import type { FinishedGame, StatsSnapshot } from "./protocol";
+import type { FinishedGame, PlayerCareer, StatsSnapshot } from "./protocol";
 
 interface Totals {
   humansJoined: number;
@@ -13,6 +13,22 @@ interface Presence {
   online: number;
   phase: string;
   ts: number;
+}
+
+interface PlayerStats {
+  name: string;
+  gamesPlayed: number;
+  wins: number;
+  totalVP: number;
+  longestRoadHeld: number;
+  largestArmyHeld: number;
+}
+
+export interface PlayerResult {
+  won: boolean;
+  vp: number;
+  longestRoad: boolean;
+  largestArmy: boolean;
 }
 
 const FRESH_MS = 30 * 60 * 1000; // presence entries older than this are ignored
@@ -29,13 +45,47 @@ export class StatsHub extends DurableObject {
     recent: [],
   };
   private presence: Record<string, Presence> = {};
+  private players: Record<string, PlayerStats> = {};
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env as never);
     ctx.blockConcurrencyWhile(async () => {
       this.totals = (await ctx.storage.get<Totals>("totals")) ?? this.totals;
       this.presence = (await ctx.storage.get<Record<string, Presence>>("presence")) ?? {};
+      this.players = (await ctx.storage.get<Record<string, PlayerStats>>("players")) ?? {};
     });
+  }
+
+  async recordPlayerResult(pid: string, name: string, r: PlayerResult): Promise<void> {
+    const p = (this.players[pid] ??= {
+      name,
+      gamesPlayed: 0,
+      wins: 0,
+      totalVP: 0,
+      longestRoadHeld: 0,
+      largestArmyHeld: 0,
+    });
+    p.name = name || p.name;
+    p.gamesPlayed++;
+    if (r.won) p.wins++;
+    p.totalVP += r.vp;
+    if (r.longestRoad) p.longestRoadHeld++;
+    if (r.largestArmy) p.largestArmyHeld++;
+    await this.ctx.storage.put("players", this.players);
+  }
+
+  async getPlayer(pid: string): Promise<PlayerCareer | null> {
+    const p = this.players[pid];
+    if (!p) return null;
+    return {
+      name: p.name,
+      gamesPlayed: p.gamesPlayed,
+      wins: p.wins,
+      winRate: p.gamesPlayed ? p.wins / p.gamesPlayed : 0,
+      avgVP: p.gamesPlayed ? p.totalVP / p.gamesPlayed : 0,
+      longestRoadHeld: p.longestRoadHeld,
+      largestArmyHeld: p.largestArmyHeld,
+    };
   }
 
   async recordJoin(): Promise<void> {

@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import type { GameState } from "../shared/types";
 import type { GameEvent } from "../shared/actions";
 import { apply, addSeat, createLobby } from "../shared/engine";
+import { victoryPoints } from "../shared/scoring";
 import { toView } from "./views";
 import { hasBotMove, stepBots } from "./bots";
 import type { StatsHub } from "./stats";
@@ -33,6 +34,7 @@ interface Attachment {
 export class GameRoom extends DurableObject<Env> {
   private game: GameState | null = null;
   private tokens: Record<string, number> = {};
+  private seatPlayers: Record<number, string> = {}; // seatId -> persistent player id
   private gameStartMs = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -40,6 +42,7 @@ export class GameRoom extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(async () => {
       this.game = (await ctx.storage.get<GameState>("game")) ?? null;
       this.tokens = (await ctx.storage.get<Record<string, number>>("tokens")) ?? {};
+      this.seatPlayers = (await ctx.storage.get<Record<number, string>>("seatPlayers")) ?? {};
       this.gameStartMs = (await ctx.storage.get<number>("gameStartMs")) ?? 0;
     });
   }
@@ -76,11 +79,23 @@ export class GameRoom extends DurableObject<Env> {
       this.report((s) => s.recordGameStart());
     }
     if (next === "finished") {
+      const g = this.game;
       const dur = this.gameStartMs ? Date.now() - this.gameStartMs : 0;
-      const winner =
-        this.game.winner != null ? this.game.seats[this.game.winner]!.name : "—";
-      const players = this.game.seats.length;
-      this.report((s) => s.recordGameFinish(dur, players, winner));
+      const winner = g.winner != null ? g.seats[g.winner]!.name : "—";
+      this.report((s) => s.recordGameFinish(dur, g.seats.length, winner));
+      // per-player career stats for humans with a persistent id
+      for (const seat of g.seats) {
+        if (seat.kind !== "human") continue;
+        const pid = this.seatPlayers[seat.id];
+        if (!pid) continue;
+        const result = {
+          won: g.winner === seat.id,
+          vp: victoryPoints(g, seat.id),
+          longestRoad: g.awards.longestRoad === seat.id,
+          largestArmy: g.awards.largestArmy === seat.id,
+        };
+        this.report((s) => s.recordPlayerResult(pid, seat.name, result));
+      }
     }
     this.reportPresence();
   }
@@ -163,6 +178,7 @@ export class GameRoom extends DurableObject<Env> {
 
     const token = msg.sessionToken && known != null ? msg.sessionToken : crypto.randomUUID();
     this.tokens[token] = seatId;
+    if (msg.playerId) this.seatPlayers[seatId] = msg.playerId;
     ws.serializeAttachment({ seatId, token } satisfies Attachment);
     await this.persist();
     this.send(ws, { t: "welcome", seatId, sessionToken: token });
@@ -232,5 +248,6 @@ export class GameRoom extends DurableObject<Env> {
   private async persist(): Promise<void> {
     await this.ctx.storage.put("game", this.game);
     await this.ctx.storage.put("tokens", this.tokens);
+    await this.ctx.storage.put("seatPlayers", this.seatPlayers);
   }
 }

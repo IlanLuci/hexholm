@@ -57,7 +57,7 @@ export interface GameView {
 // ---- wire messages ----
 
 export type ClientMessage =
-  | { t: "hello"; name: string; sessionToken?: string }
+  | { t: "hello"; name: string; sessionToken?: string; playerId?: string }
   | { t: "action"; action: Action };
 
 export type ServerMessage =
@@ -85,4 +85,15 @@ export interface StatsSnapshot {
   onlinePlayers: number;
   activeGames: number;
   recent: FinishedGame[];
+}
+
+/** A player's career stats, shown in their profile tooltip. */
+export interface PlayerCareer {
+  name: string;
+  gamesPlayed: number;
+  wins: number;
+  winRate: number; // 0..1
+  avgVP: number;
+  longestRoadHeld: number;
+  largestArmyHeld: number;
 }

@@ -20,6 +20,14 @@ export default {
       return Response.json({ code: randomCode() });
     }
 
+    // A player's own career stats (keyed by their unguessable guest id).
+    if (url.pathname === "/api/player") {
+      const pid = url.searchParams.get("pid");
+      if (!pid) return new Response("Missing pid", { status: 400 });
+      const stub = env.STATS.get(env.STATS.idFromName("global"));
+      return Response.json(await stub.getPlayer(pid));
+    }
+
     // Admin stats (gated by ADMIN_KEY via header or ?key=).
     if (url.pathname === "/api/stats") {
       const key = request.headers.get("x-admin-key") ?? url.searchParams.get("key");

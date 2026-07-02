@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Action, GameEvent } from "../shared/actions";
 import type { ClientMessage, GameView, ServerMessage } from "../server/protocol";
+import { getPlayerId } from "./identity";
 
 export type Status = "idle" | "connecting" | "open" | "reconnecting" | "closed";
 
@@ -40,7 +41,7 @@ export function useGame(): Game {
 
     sock.onopen = () => {
       const token = localStorage.getItem(tokenKey(p.code)) ?? undefined;
-      const hello: ClientMessage = { t: "hello", name: p.name, sessionToken: token };
+      const hello: ClientMessage = { t: "hello", name: p.name, sessionToken: token, playerId: getPlayerId() };
       sock.send(JSON.stringify(hello));
     };
     sock.onmessage = (ev) => {

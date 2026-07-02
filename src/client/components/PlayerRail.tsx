@@ -1,7 +1,55 @@
+import { useEffect, useState } from "react";
 import { C, font } from "../theme";
-import type { GameView } from "../../server/protocol";
+import { getPlayerId } from "../identity";
+import type { GameView, PlayerCareer } from "../../server/protocol";
+
+/** Fetch the viewer's own career stats, refreshing when a game ends. */
+function useCareer(refreshKey: unknown): PlayerCareer | null {
+  const [career, setCareer] = useState<PlayerCareer | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/player?pid=${getPlayerId()}`)
+      .then((r) => r.json())
+      .then((c) => live && setCareer(c))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [refreshKey]);
+  return career;
+}
+
+function ProfileTooltip({ career }: { career: PlayerCareer | null }) {
+  const rows: [string, string][] = career
+    ? [
+        ["Games played", String(career.gamesPlayed)],
+        ["Wins", String(career.wins)],
+        ["Win rate", career.gamesPlayed ? `${Math.round(career.winRate * 100)}%` : "—"],
+        ["Avg. points", career.gamesPlayed ? career.avgVP.toFixed(1) : "—"],
+        ["Longest road", String(career.longestRoadHeld)],
+        ["Largest army", String(career.largestArmyHeld)],
+      ]
+    : [];
+  return (
+    <div style={{ position: "absolute", left: 0, top: "calc(100% + 8px)", zIndex: 40, width: 220, background: C.panel, color: C.ink, borderRadius: 8, padding: "12px 14px", boxShadow: "0 16px 40px rgba(0,0,0,.4)", border: `1px solid ${C.border}` }}>
+      <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 13, color: C.gold, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Your career</div>
+      {career && career.gamesPlayed > 0 ? (
+        rows.map(([l, v]) => (
+          <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 12.5 }}>
+            <span style={{ color: C.muted, fontWeight: 600 }}>{l}</span>
+            <span style={{ fontWeight: 800 }}>{v}</span>
+          </div>
+        ))
+      ) : (
+        <div style={{ color: C.muted, fontWeight: 600, fontSize: 12.5 }}>No finished games yet — win one to start your record.</div>
+      )}
+    </div>
+  );
+}
 
 export function PlayerRail({ view }: { view: GameView }) {
+  const career = useCareer(view.phase === "finished" ? `${view.roomCode}:done` : "live");
+  const [showProfile, setShowProfile] = useState(false);
   return (
     <div className="hh-scroll" style={{ width: 244, display: "flex", flexDirection: "column", gap: 9, flexShrink: 0 }}>
       {view.seats.map((p) => {
@@ -9,13 +57,18 @@ export function PlayerRail({ view }: { view: GameView }) {
         return (
           <div
             key={p.id}
+            onMouseEnter={p.isYou ? () => setShowProfile(true) : undefined}
+            onMouseLeave={p.isYou ? () => setShowProfile(false) : undefined}
             style={{
+              position: "relative",
               background: active ? "rgba(217,164,65,.14)" : "rgba(0,0,0,.22)",
               border: `1px solid ${active ? "rgba(217,164,65,.5)" : "rgba(255,255,255,.07)"}`,
               borderRadius: 6,
               padding: "10px 12px",
+              cursor: p.isYou ? "default" : undefined,
             }}
           >
+            {p.isYou && showProfile && <ProfileTooltip career={career} />}
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ width: 31, height: 31, borderRadius: 5, background: p.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontFamily: font.display, fontSize: 14, flexShrink: 0 }}>
                 {p.name.slice(0, 1).toUpperCase()}
