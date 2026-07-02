@@ -12,6 +12,7 @@ import {
 } from "./legal";
 import { makeRng, rollDie } from "./rng";
 import type { DevKind } from "./types";
+import { hasWon, recomputeAwards } from "./scoring";
 
 const MAX_SEATS = 4;
 
@@ -574,11 +575,25 @@ function finishBuild(s: GameState, seat: number, event: GameEvent): ApplyResult 
   return ok(s, events);
 }
 
-/** Placeholder until scoring is wired in (Task 11). */
-function refreshAwards(_s: GameState, _events: GameEvent[]): void {}
+/** Recompute awards; emit an event for any holder that changed. */
+function refreshAwards(s: GameState, events: GameEvent[]): void {
+  const before = { ...s.awards };
+  recomputeAwards(s);
+  if (s.awards.longestRoad !== before.longestRoad && s.awards.longestRoad !== null)
+    events.push({ type: "award", kind: "longestRoad", seat: s.awards.longestRoad });
+  if (s.awards.largestArmy !== before.largestArmy && s.awards.largestArmy !== null)
+    events.push({ type: "award", kind: "largestArmy", seat: s.awards.largestArmy });
+}
 
-/** Placeholder until scoring is wired in (Task 11). */
-function checkVictory(_s: GameState, _seat: number): GameEvent | null {
+/** End the game if the seat has reached the winning VP total. */
+function checkVictory(s: GameState, seat: number): GameEvent | null {
+  if (s.phase === "play" && hasWon(s, seat)) {
+    s.phase = "finished";
+    s.winner = seat;
+    s.turn = null;
+    log(s, `${s.seats[seat]!.name} wins the island!`);
+    return { type: "win", seat };
+  }
   return null;
 }
 
