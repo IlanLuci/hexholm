@@ -284,10 +284,51 @@ function applyPlay(s: GameState, action: Action, seat: number): ApplyResult {
       log(s, `${s.seats[seat]!.name} upgraded to a city.`);
       return finishBuild(s, seat, { type: "built", kind: "city", by: seat });
     }
+    case "discard": {
+      const need = s.pendingDiscards[seat];
+      if (need == null) return err("You have nothing to discard");
+      const chosen = action.hand;
+      let total = 0;
+      for (const r of RESOURCES) {
+        const amt = chosen[r] ?? 0;
+        if (amt < 0) return err("Invalid discard");
+        if (amt > s.seats[seat]!.resources[r]) return err("You do not hold that many");
+        total += amt;
+      }
+      if (total !== need) return err(`You must discard exactly ${need}`);
+      payToBank(s, seat, chosen);
+      delete s.pendingDiscards[seat];
+      log(s, `${s.seats[seat]!.name} discarded ${need}.`);
+      return ok(s);
+    }
+    case "moveRobber": {
+      if (seat !== s.activeSeat) return err("Not your turn");
+      if (Object.keys(s.pendingDiscards).length > 0)
+        return err("Waiting on discards");
+      const events: GameEvent[] = [];
+      if (turn.mustMoveRobber) {
+        if (action.hex === s.robberHex) return err("Move the robber somewhere new");
+        if (action.hex < 0 || action.hex >= s.board.tiles.length)
+          return err("No such hex");
+        s.robberHex = action.hex;
+        events.push({ type: "robber", hex: action.hex });
+        log(s, `${s.seats[seat]!.name} moved the robber.`);
+        resolveRobberSteal(s, seat, action.steal, events);
+      } else if (s.steal) {
+        if (action.steal == null || !s.steal.candidates.includes(action.steal))
+          return err("Pick a valid target to steal from");
+        stealCard(s, seat, action.steal, events);
+        s.steal = null;
+      } else {
+        return err("The robber does not need moving");
+      }
+      return ok(s, events);
+    }
     case "endTurn": {
       if (seat !== s.activeSeat) return err("Not your turn");
       if (!turn.hasRolled) return err("Roll before ending your turn");
       if (turn.mustMoveRobber) return err("Move the robber first");
+      if (s.steal) return err("Choose who to steal from first");
       if (Object.keys(s.pendingDiscards).length > 0) return err("Discards pending");
       if (s.trade) return err("Resolve the open trade first");
       endTurn(s);
@@ -303,8 +344,69 @@ function requireActive(s: GameState, seat: number): ApplyResult | null {
   if (seat !== s.activeSeat) return err("Not your turn");
   if (!s.turn!.hasRolled) return err("Roll first");
   if (s.turn!.mustMoveRobber) return err("Move the robber first");
+  if (s.steal) return err("Resolve the robber steal first");
   if (Object.keys(s.pendingDiscards).length > 0) return err("Resolve discards first");
   return null;
+}
+
+/** Seats (other than `active`) with a building on the robber hex and ≥1 card. */
+function robberTargets(s: GameState, active: number): number[] {
+  const verts = new Set(hexVertices(s.robberHex));
+  const out: number[] = [];
+  for (const st of s.seats) {
+    if (st.id === active) continue;
+    if (handTotal(st.resources) === 0) continue;
+    const onHex =
+      st.buildings.settlements.some((v) => verts.has(v)) ||
+      st.buildings.cities.some((v) => verts.has(v));
+    if (onHex) out.push(st.id);
+  }
+  return out;
+}
+
+/** Resolve stealing after the robber moves: auto/explicit/pending as needed. */
+function resolveRobberSteal(
+  s: GameState,
+  active: number,
+  choice: number | null,
+  events: GameEvent[],
+): void {
+  s.turn!.mustMoveRobber = false;
+  const candidates = robberTargets(s, active);
+  if (candidates.length === 0) {
+    s.steal = null;
+    return;
+  }
+  if (choice != null && candidates.includes(choice)) {
+    stealCard(s, active, choice, events);
+    s.steal = null;
+    return;
+  }
+  if (candidates.length === 1) {
+    stealCard(s, active, candidates[0]!, events);
+    s.steal = null;
+    return;
+  }
+  s.steal = { candidates };
+}
+
+/** Steal one uniformly random card (by resource share) from victim to thief. */
+function stealCard(
+  s: GameState,
+  thief: number,
+  victim: number,
+  events: GameEvent[],
+): void {
+  const hand = s.seats[victim]!.resources;
+  const pool: Resource[] = [];
+  for (const r of RESOURCES) for (let i = 0; i < hand[r]; i++) pool.push(r);
+  if (pool.length === 0) return;
+  const rng = makeRng(`${s.seed}:steal:${s.version}`);
+  const res = pool[Math.floor(rng() * pool.length)]!;
+  s.seats[victim]!.resources[res]--;
+  s.seats[thief]!.resources[res]++;
+  events.push({ type: "stole", from: victim, to: thief });
+  log(s, `${s.seats[thief]!.name} stole from ${s.seats[victim]!.name}.`);
 }
 
 /** Finish a build: recompute awards, check victory, return result. */
