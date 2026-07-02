@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hexholm — Build. Trade. Outwit the island.</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * { box-sizing: border-box; }
+      html, body, #root { margin: 0; padding: 0; height: 100%; }
+      body {
+        font-family: "Manrope", system-ui, sans-serif;
+        color: #241b10;
+        -webkit-font-smoothing: antialiased;
+        background: #ede3cf;
+      }
+      .hh-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+      .hh-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 2px; }
+      @keyframes hhpop { 0% { transform: scale(.2); opacity: 0; } 60% { transform: scale(1.14); } 100% { transform: scale(1); opacity: 1; } }
+      @keyframes hhfloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/client/main.tsx"></script>
+  </body>
+</html>

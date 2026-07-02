@@ -5,10 +5,21 @@ import {
   vertexAdjacent,
   vertexEdges,
 } from "./board";
-import type { GameState, Resource } from "./types";
+import type { Board, Resource } from "./types";
+
+/** The read-only slice of game state needed to judge legality of moves. Both the
+ *  full authoritative GameState and the redacted client GameView satisfy it. */
+export interface ReadState {
+  seats: {
+    id: number;
+    buildings: { settlements: number[]; cities: number[]; roads: number[] };
+  }[];
+  board: Board;
+  robberHex: number;
+}
 
 /** Seat id of the building at a vertex, or null. */
-export function buildingOwnerAt(state: GameState, vertex: number): number | null {
+export function buildingOwnerAt(state: ReadState, vertex: number): number | null {
   for (const seat of state.seats) {
     if (
       seat.buildings.settlements.includes(vertex) ||
@@ -20,13 +31,13 @@ export function buildingOwnerAt(state: GameState, vertex: number): number | null
 }
 
 /** Seat id owning the road on an edge, or null. */
-export function roadOwnerAt(state: GameState, edge: number): number | null {
+export function roadOwnerAt(state: ReadState, edge: number): number | null {
   for (const seat of state.seats)
     if (seat.buildings.roads.includes(edge)) return seat.id;
   return null;
 }
 
-export function occupiedVertices(state: GameState): Set<number> {
+export function occupiedVertices(state: ReadState): Set<number> {
   const set = new Set<number>();
   for (const seat of state.seats) {
     for (const v of seat.buildings.settlements) set.add(v);
@@ -36,7 +47,7 @@ export function occupiedVertices(state: GameState): Set<number> {
 }
 
 export function canPlaceSettlement(
-  state: GameState,
+  state: ReadState,
   seat: number,
   vertex: number,
   opts: { setup: boolean },
@@ -54,7 +65,7 @@ export function canPlaceSettlement(
 }
 
 export function canPlaceRoad(
-  state: GameState,
+  state: ReadState,
   seat: number,
   edge: number,
   opts: { mustTouchVertex?: number | null } = {},
@@ -75,12 +86,12 @@ export function canPlaceRoad(
   return false;
 }
 
-export function canPlaceCity(state: GameState, seat: number, vertex: number): boolean {
+export function canPlaceCity(state: ReadState, seat: number, vertex: number): boolean {
   return state.seats[seat]?.buildings.settlements.includes(vertex) ?? false;
 }
 
 /** Hexes the robber may move to (any hex other than its current one). */
-export function legalRobberHexes(state: GameState): number[] {
+export function legalRobberHexes(state: ReadState): number[] {
   const out: number[] = [];
   for (let h = 0; h < state.board.tiles.length; h++)
     if (h !== state.robberHex) out.push(h);
@@ -88,7 +99,7 @@ export function legalRobberHexes(state: GameState): number[] {
 }
 
 /** Best (lowest) bank/harbor trade ratio a seat can get for giving `res`. */
-export function tradeRatio(state: GameState, seat: number, res: Resource): number {
+export function tradeRatio(state: ReadState, seat: number, res: Resource): number {
   let ratio = 4;
   const myVerts = new Set<number>([
     ...state.seats[seat]!.buildings.settlements,
