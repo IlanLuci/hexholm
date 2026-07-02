@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hexholm",
   "main": "src/server/index.ts",
+  "account_id": "cfeb7719808fbf98a0dcdf51cc9f0ab9",
   "compatibility_date": "2024-11-01",
   "assets": {
     "directory": "./dist/client",
