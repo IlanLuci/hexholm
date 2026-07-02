@@ -151,6 +151,7 @@ export function GameScreen({ game, view }: { game: Game; view: GameView }) {
         <TradeModal
           view={view}
           send={send}
+          onDismiss={() => setModal(null)}
           onClose={() => {
             // closing with your own offer still on the table withdraws it
             if (view.trade && view.trade.from === view.youSeat) send({ type: "cancelTrade" });

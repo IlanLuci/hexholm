@@ -92,7 +92,7 @@ export function StealModal({ view, send }: { view: GameView; send: Send }) {
   );
 }
 
-export function TradeModal({ view, send, onClose }: { view: GameView; send: Send; onClose: () => void }) {
+export function TradeModal({ view, send, onClose, onDismiss }: { view: GameView; send: Send; onClose: () => void; onDismiss: () => void }) {
   const [tab, setTab] = useState<"bank" | "players">("bank");
   const me = view.seats[view.youSeat]!;
   const hand = me.resources!;
@@ -128,7 +128,7 @@ export function TradeModal({ view, send, onClose }: { view: GameView; send: Send
             onClick={() => {
               if (hand[give] < ratio) return;
               send({ type: "bankTrade", give, get });
-              onClose();
+              onDismiss();
             }}
             style={{ ...primary, width: "100%", marginTop: 14, opacity: hand[give] >= ratio ? 1 : 0.5 }}
           >
@@ -157,7 +157,7 @@ export function TradeModal({ view, send, onClose }: { view: GameView; send: Send
                         <div style={{ width: 26, height: 26, borderRadius: 5, background: seat.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontFamily: font.display, fontSize: 12 }}>{seat.name.slice(0, 1)}</div>
                         <span style={{ fontWeight: 700, color: C.ink, flex: 1 }}>{seat.name}</span>
                         <span style={{ fontSize: 12.5, fontWeight: 700, color: r === "accept" ? C.green : r === "reject" ? "#A2854F" : C.muted }}>{r === "accept" ? "Accepted" : r === "reject" ? "Declined" : "Thinking…"}</span>
-                        {r === "accept" && <button onClick={() => send({ type: "confirmTrade", withSeat: +id })} style={{ ...green, padding: "8px 14px", fontSize: 12.5 }}>Trade</button>}
+                        {r === "accept" && <button onClick={() => { send({ type: "confirmTrade", withSeat: +id }); onDismiss(); }} style={{ ...green, padding: "8px 14px", fontSize: 12.5 }}>Trade</button>}
                       </div>
                     );
                   })}
