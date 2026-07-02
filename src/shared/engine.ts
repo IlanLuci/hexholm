@@ -1,9 +1,14 @@
 import type { Action, ApplyResult, GameEvent } from "./actions";
 import type { GameState, PartialHand, Resource, Seat } from "./types";
-import { RESOURCES, handTotal } from "./types";
+import { RESOURCES, COSTS, SUPPLY, handTotal } from "./types";
 import { botName, createLobby, makeSeat } from "./setup";
 import { hexVertices, vertexHexes } from "./board";
-import { buildingOwnerAt, canPlaceRoad, canPlaceSettlement } from "./legal";
+import {
+  buildingOwnerAt,
+  canPlaceCity,
+  canPlaceRoad,
+  canPlaceSettlement,
+} from "./legal";
 import { makeRng, rollDie } from "./rng";
 
 const MAX_SEATS = 4;
@@ -232,6 +237,53 @@ function applyPlay(s: GameState, action: Action, seat: number): ApplyResult {
       }
       return ok(s, events);
     }
+    case "buildRoad": {
+      const guard = requireActive(s, seat);
+      if (guard) return guard;
+      if (s.seats[seat]!.buildings.roads.length >= SUPPLY.roads)
+        return err("No roads left");
+      if (!canPlaceRoad(s, seat, action.edge)) return err("Cannot place a road there");
+      if (turn.freeRoads > 0) {
+        turn.freeRoads--;
+      } else {
+        if (!canAfford(s.seats[seat]!, COSTS.road)) return err("Cannot afford a road");
+        payToBank(s, seat, COSTS.road);
+      }
+      s.seats[seat]!.buildings.roads.push(action.edge);
+      log(s, `${s.seats[seat]!.name} built a road.`);
+      return finishBuild(s, seat, { type: "built", kind: "road", by: seat });
+    }
+    case "buildSettlement": {
+      const guard = requireActive(s, seat);
+      if (guard) return guard;
+      if (s.seats[seat]!.buildings.settlements.length >= SUPPLY.settlements)
+        return err("No settlements left");
+      if (!canPlaceSettlement(s, seat, action.vertex, { setup: false }))
+        return err("Cannot place a settlement there");
+      if (!canAfford(s.seats[seat]!, COSTS.settle))
+        return err("Cannot afford a settlement");
+      payToBank(s, seat, COSTS.settle);
+      s.seats[seat]!.buildings.settlements.push(action.vertex);
+      log(s, `${s.seats[seat]!.name} built a settlement.`);
+      return finishBuild(s, seat, { type: "built", kind: "settlement", by: seat });
+    }
+    case "buildCity": {
+      const guard = requireActive(s, seat);
+      if (guard) return guard;
+      if (s.seats[seat]!.buildings.cities.length >= SUPPLY.cities)
+        return err("No cities left");
+      if (!canPlaceCity(s, seat, action.vertex))
+        return err("You need a settlement there first");
+      if (!canAfford(s.seats[seat]!, COSTS.city)) return err("Cannot afford a city");
+      payToBank(s, seat, COSTS.city);
+      const st = s.seats[seat]!;
+      st.buildings.settlements = st.buildings.settlements.filter(
+        (v) => v !== action.vertex,
+      );
+      st.buildings.cities.push(action.vertex);
+      log(s, `${s.seats[seat]!.name} upgraded to a city.`);
+      return finishBuild(s, seat, { type: "built", kind: "city", by: seat });
+    }
     case "endTurn": {
       if (seat !== s.activeSeat) return err("Not your turn");
       if (!turn.hasRolled) return err("Roll before ending your turn");
@@ -244,6 +296,32 @@ function applyPlay(s: GameState, action: Action, seat: number): ApplyResult {
     default:
       return err(`Action '${action.type}' not available yet`);
   }
+}
+
+/** Guard for actions that require it to be the seat's active, post-roll turn. */
+function requireActive(s: GameState, seat: number): ApplyResult | null {
+  if (seat !== s.activeSeat) return err("Not your turn");
+  if (!s.turn!.hasRolled) return err("Roll first");
+  if (s.turn!.mustMoveRobber) return err("Move the robber first");
+  if (Object.keys(s.pendingDiscards).length > 0) return err("Resolve discards first");
+  return null;
+}
+
+/** Finish a build: recompute awards, check victory, return result. */
+function finishBuild(s: GameState, seat: number, event: GameEvent): ApplyResult {
+  const events: GameEvent[] = [event];
+  refreshAwards(s, events);
+  const win = checkVictory(s, seat);
+  if (win) events.push(win);
+  return ok(s, events);
+}
+
+/** Placeholder until scoring is wired in (Task 11). */
+function refreshAwards(_s: GameState, _events: GameEvent[]): void {}
+
+/** Placeholder until scoring is wired in (Task 11). */
+function checkVictory(_s: GameState, _seat: number): GameEvent | null {
+  return null;
 }
 
 /** Distribute resources for a non-7 roll, respecting the multi-claimant bank rule. */
