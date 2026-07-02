@@ -8,8 +8,10 @@ import {
   canPlaceCity,
   canPlaceRoad,
   canPlaceSettlement,
+  tradeRatio,
 } from "./legal";
 import { makeRng, rollDie } from "./rng";
+import type { DevKind } from "./types";
 
 const MAX_SEATS = 4;
 
@@ -62,6 +64,38 @@ function payToBank(state: GameState, seat: number, cost: PartialHand): void {
 
 function canAfford(seat: Seat, cost: PartialHand): boolean {
   return RESOURCES.every((r) => seat.resources[r] >= (cost[r] ?? 0));
+}
+
+function hasHand(seat: Seat, hand: PartialHand): boolean {
+  return RESOURCES.every((r) => seat.resources[r] >= (hand[r] ?? 0));
+}
+
+function moveHand(from: Seat, to: Seat, hand: PartialHand): void {
+  for (const r of RESOURCES) {
+    const amt = hand[r] ?? 0;
+    if (amt <= 0) continue;
+    from.resources[r] -= amt;
+    to.resources[r] += amt;
+  }
+}
+
+function partialTotal(hand: PartialHand): number {
+  return RESOURCES.reduce((sum, r) => sum + (hand[r] ?? 0), 0);
+}
+
+function removeDev(seat: Seat, kind: DevKind): void {
+  const i = seat.devCards.indexOf(kind);
+  if (i >= 0) seat.devCards.splice(i, 1);
+}
+
+/** Guard for playing a development card. */
+function requireDev(s: GameState, seat: number, kind: DevKind): ApplyResult | null {
+  if (seat !== s.activeSeat) return err("Not your turn");
+  if (s.turn!.devPlayedThisTurn) return err("Only one card per turn");
+  if (s.steal) return err("Resolve the robber steal first");
+  if (Object.keys(s.pendingDiscards).length > 0) return err("Resolve discards first");
+  if (!s.seats[seat]!.devCards.includes(kind)) return err("You cannot play that card");
+  return null;
 }
 
 /** Add a human seat (used on join). Returns a new state; lobby phase only. */
@@ -283,6 +317,128 @@ function applyPlay(s: GameState, action: Action, seat: number): ApplyResult {
       st.buildings.cities.push(action.vertex);
       log(s, `${s.seats[seat]!.name} upgraded to a city.`);
       return finishBuild(s, seat, { type: "built", kind: "city", by: seat });
+    }
+    case "buyDev": {
+      const guard = requireActive(s, seat);
+      if (guard) return guard;
+      if (s.devDeck.length === 0) return err("No development cards left");
+      if (!canAfford(s.seats[seat]!, COSTS.dev)) return err("Cannot afford a card");
+      payToBank(s, seat, COSTS.dev);
+      const card = s.devDeck.shift()!;
+      s.seats[seat]!.newDevCards.push(card);
+      log(s, `${s.seats[seat]!.name} bought a development card.`);
+      return ok(s, [{ type: "boughtDev", by: seat }]);
+    }
+    case "playKnight": {
+      const guard = requireDev(s, seat, "knight");
+      if (guard) return guard;
+      if (action.hex === s.robberHex) return err("Move the robber somewhere new");
+      if (action.hex < 0 || action.hex >= s.board.tiles.length)
+        return err("No such hex");
+      removeDev(s.seats[seat]!, "knight");
+      s.seats[seat]!.playedKnights++;
+      turn.devPlayedThisTurn = true;
+      const events: GameEvent[] = [{ type: "played", kind: "knight", by: seat }];
+      s.robberHex = action.hex;
+      events.push({ type: "robber", hex: action.hex });
+      turn.mustMoveRobber = true; // so resolveRobberSteal clears it uniformly
+      resolveRobberSteal(s, seat, action.steal, events);
+      log(s, `${s.seats[seat]!.name} played a Knight.`);
+      refreshAwards(s, events);
+      const win = checkVictory(s, seat);
+      if (win) events.push(win);
+      return ok(s, events);
+    }
+    case "playRoadBuilding": {
+      const guard = requireDev(s, seat, "road");
+      if (guard) return guard;
+      removeDev(s.seats[seat]!, "road");
+      turn.devPlayedThisTurn = true;
+      const left = SUPPLY.roads - s.seats[seat]!.buildings.roads.length;
+      turn.freeRoads += Math.min(2, Math.max(0, left));
+      log(s, `${s.seats[seat]!.name} played Road Building.`);
+      return ok(s, [{ type: "played", kind: "road", by: seat }]);
+    }
+    case "playYearOfPlenty": {
+      const guard = requireDev(s, seat, "plenty");
+      if (guard) return guard;
+      removeDev(s.seats[seat]!, "plenty");
+      turn.devPlayedThisTurn = true;
+      const want: PartialHand = {};
+      for (const r of action.picks) want[r] = (want[r] ?? 0) + 1;
+      bankGive(s, seat, want);
+      log(s, `${s.seats[seat]!.name} played Year of Plenty.`);
+      return ok(s, [{ type: "played", kind: "plenty", by: seat }]);
+    }
+    case "playMonopoly": {
+      const guard = requireDev(s, seat, "mono");
+      if (guard) return guard;
+      removeDev(s.seats[seat]!, "mono");
+      turn.devPlayedThisTurn = true;
+      let taken = 0;
+      for (const st of s.seats) {
+        if (st.id === seat) continue;
+        taken += st.resources[action.resource];
+        st.resources[action.resource] = 0;
+      }
+      s.seats[seat]!.resources[action.resource] += taken;
+      log(s, `${s.seats[seat]!.name} monopolized ${action.resource} (${taken}).`);
+      return ok(s, [{ type: "played", kind: "mono", by: seat }]);
+    }
+    case "bankTrade": {
+      const guard = requireActive(s, seat);
+      if (guard) return guard;
+      const ratio = tradeRatio(s, seat, action.give);
+      if (s.seats[seat]!.resources[action.give] < ratio)
+        return err(`Need ${ratio} ${action.give}`);
+      if (s.bank[action.get] < 1) return err("Bank is out of that resource");
+      s.seats[seat]!.resources[action.give] -= ratio;
+      s.bank[action.give] += ratio;
+      s.seats[seat]!.resources[action.get] += 1;
+      s.bank[action.get] -= 1;
+      log(s, `${s.seats[seat]!.name} traded ${ratio} ${action.give} for ${action.get}.`);
+      return ok(s, [{ type: "trade", from: seat, to: -1 }]);
+    }
+    case "proposeTrade": {
+      const guard = requireActive(s, seat);
+      if (guard) return guard;
+      if (!hasHand(s.seats[seat]!, action.give))
+        return err("You do not hold what you offer");
+      if (partialTotal(action.give) === 0 && partialTotal(action.get) === 0)
+        return err("Empty trade");
+      const responses: Record<number, "pending" | "accept" | "reject"> = {};
+      for (const st of s.seats) if (st.id !== seat) responses[st.id] = "pending";
+      s.trade = { from: seat, give: action.give, get: action.get, responses };
+      log(s, `${s.seats[seat]!.name} proposed a trade.`);
+      return ok(s);
+    }
+    case "respondTrade": {
+      if (!s.trade) return err("No open trade");
+      if (seat === s.trade.from) return err("You proposed this trade");
+      if (!(seat in s.trade.responses)) return err("Not part of this trade");
+      s.trade.responses[seat] = action.accept ? "accept" : "reject";
+      return ok(s);
+    }
+    case "confirmTrade": {
+      if (!s.trade) return err("No open trade");
+      if (seat !== s.trade.from) return err("Only the proposer can confirm");
+      if (s.trade.responses[action.withSeat] !== "accept")
+        return err("That player has not accepted");
+      const proposer = s.seats[seat]!;
+      const other = s.seats[action.withSeat]!;
+      if (!hasHand(proposer, s.trade.give)) return err("You no longer hold the offer");
+      if (!hasHand(other, s.trade.get)) return err("They no longer hold their side");
+      moveHand(proposer, other, s.trade.give);
+      moveHand(other, proposer, s.trade.get);
+      log(s, `${proposer.name} traded with ${other.name}.`);
+      s.trade = null;
+      return ok(s, [{ type: "trade", from: seat, to: action.withSeat }]);
+    }
+    case "cancelTrade": {
+      if (!s.trade) return err("No open trade");
+      if (seat !== s.trade.from) return err("Only the proposer can cancel");
+      s.trade = null;
+      return ok(s);
     }
     case "discard": {
       const need = s.pendingDiscards[seat];
