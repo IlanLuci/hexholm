@@ -9,8 +9,15 @@
     "not_found_handling": "single-page-application"
   },
   "durable_objects": {
-    "bindings": [{ "name": "GAME_ROOM", "class_name": "GameRoom" }]
+    "bindings": [
+      { "name": "GAME_ROOM", "class_name": "GameRoom" },
+      { "name": "STATS", "class_name": "StatsHub" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["StatsHub"] }
+  ],
+  "vars": { "ADMIN_KEY": "hexholm-admin" },
   "observability": { "enabled": true }
 }

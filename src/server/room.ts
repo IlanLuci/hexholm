@@ -4,6 +4,7 @@ import type { GameEvent } from "../shared/actions";
 import { apply, addSeat, createLobby } from "../shared/engine";
 import { toView } from "./views";
 import { hasBotMove, stepBots } from "./bots";
+import type { StatsHub } from "./stats";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
 /** Pacing between bot actions so players can follow the game in real time.
@@ -18,7 +19,9 @@ function delayAfter(events: GameEvent[]): number {
 
 export interface Env {
   GAME_ROOM: DurableObjectNamespace<GameRoom>;
+  STATS: DurableObjectNamespace<StatsHub>;
   ASSETS: Fetcher;
+  ADMIN_KEY: string;
 }
 
 interface Attachment {
@@ -30,13 +33,56 @@ interface Attachment {
 export class GameRoom extends DurableObject<Env> {
   private game: GameState | null = null;
   private tokens: Record<string, number> = {};
+  private gameStartMs = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       this.game = (await ctx.storage.get<GameState>("game")) ?? null;
       this.tokens = (await ctx.storage.get<Record<string, number>>("tokens")) ?? {};
+      this.gameStartMs = (await ctx.storage.get<number>("gameStartMs")) ?? 0;
     });
+  }
+
+  private stats(): DurableObjectStub<StatsHub> {
+    return this.env.STATS.get(this.env.STATS.idFromName("global"));
+  }
+
+  /** Best-effort report to the stats hub — never let it break gameplay. */
+  private report(fn: (s: DurableObjectStub<StatsHub>) => Promise<unknown>): void {
+    try {
+      this.ctx.waitUntil(fn(this.stats()).catch(() => {}));
+    } catch {
+      /* stats are non-critical */
+    }
+  }
+
+  private reportPresence(): void {
+    if (!this.game) return;
+    const online = this.game.seats.filter((s) => s.kind === "human" && s.connected).length;
+    const code = this.game.roomCode;
+    const phase = this.game.phase;
+    this.report((s) => s.presenceUpdate(code, online, phase));
+  }
+
+  /** Detect lobby→setup (start) and →finished (end) transitions for stats. */
+  private async trackTransition(prev: string): Promise<void> {
+    if (!this.game) return;
+    const next = this.game.phase;
+    if (next === prev) return;
+    if (prev === "lobby" && next === "setup") {
+      this.gameStartMs = Date.now();
+      await this.ctx.storage.put("gameStartMs", this.gameStartMs);
+      this.report((s) => s.recordGameStart());
+    }
+    if (next === "finished") {
+      const dur = this.gameStartMs ? Date.now() - this.gameStartMs : 0;
+      const winner =
+        this.game.winner != null ? this.game.seats[this.game.winner]!.name : "—";
+      const players = this.game.seats.length;
+      this.report((s) => s.recordGameFinish(dur, players, winner));
+    }
+    this.reportPresence();
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -87,6 +133,7 @@ export class GameRoom extends DurableObject<Env> {
       this.game.seats[att.seatId]!.connected = false;
       await this.persist();
       this.broadcastState();
+      this.reportPresence();
     }
   }
 
@@ -111,6 +158,7 @@ export class GameRoom extends DurableObject<Env> {
       this.game = next;
       seatId = next.seats.length - 1;
       this.game.seats[seatId]!.connected = true;
+      this.report((s) => s.recordJoin());
     }
 
     const token = msg.sessionToken && known != null ? msg.sessionToken : crypto.randomUUID();
@@ -119,6 +167,7 @@ export class GameRoom extends DurableObject<Env> {
     await this.persist();
     this.send(ws, { t: "welcome", seatId, sessionToken: token });
     this.broadcastState();
+    this.reportPresence();
     await this.scheduleBots(); // in case we reconnected on a bot's turn
   }
 
@@ -128,6 +177,7 @@ export class GameRoom extends DurableObject<Env> {
   ): Promise<void> {
     const att = ws.deserializeAttachment() as Attachment | null;
     if (att == null) return this.send(ws, { t: "error", message: "Say hello first" });
+    const prevPhase = this.game!.phase;
     const result = apply(this.game!, msg.action, att.seatId);
     if (result.error || !result.state)
       return this.send(ws, { t: "error", message: result.error ?? "Illegal move" });
@@ -135,6 +185,7 @@ export class GameRoom extends DurableObject<Env> {
     await this.persist();
     this.broadcastState();
     if (result.events && result.events.length) this.broadcastEvents(result.events);
+    await this.trackTransition(prevPhase);
     await this.scheduleBots();
   }
 
@@ -147,12 +198,14 @@ export class GameRoom extends DurableObject<Env> {
   /** Fired by the scheduled alarm: play one bot action, broadcast, reschedule. */
   async alarm(): Promise<void> {
     if (!this.game) return;
+    const prevPhase = this.game.phase;
     const outcome = stepBots(this.game);
     if (!outcome.acted) return;
     this.game = outcome.state;
     await this.persist();
     this.broadcastState();
     if (outcome.events.length) this.broadcastEvents(outcome.events);
+    await this.trackTransition(prevPhase);
     await this.scheduleBots(delayAfter(outcome.events));
   }
 

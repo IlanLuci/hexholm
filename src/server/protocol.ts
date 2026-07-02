@@ -67,3 +67,22 @@ export type ServerMessage =
   | { t: "error"; message: string };
 
 export type { Resource };
+
+// ---- admin stats (shared with the dashboard) ----
+
+export interface FinishedGame {
+  winner: string;
+  durationMs: number;
+  players: number;
+  endedAt: number;
+}
+
+export interface StatsSnapshot {
+  humansJoined: number;
+  gamesStarted: number;
+  gamesFinished: number;
+  avgMatchMs: number;
+  onlinePlayers: number;
+  activeGames: number;
+  recent: FinishedGame[];
+}
