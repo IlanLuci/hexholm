@@ -94,7 +94,9 @@ export function createLobby(roomCode: string, seed: string): GameState {
   };
 }
 
-export const SEAT_COLORS = ["#C4633B", "#3F6B4E", "#4E6E8E", "#D9A441"];
+// Vivid, mutually distinct hues chosen to stand apart from every terrain tile
+// (brick/wood/sheep/wheat/ore/desert) so buildings read clearly on the board.
+export const SEAT_COLORS = ["#CB3B3B", "#2E6DB0", "#8046B6", "#D65B93"];
 const BOT_NAMES = ["Ava", "B040", "Cyrus", "Dorn"];
 
 export function makeSeat(id: number, name: string, kind: Seat["kind"]): Seat {
