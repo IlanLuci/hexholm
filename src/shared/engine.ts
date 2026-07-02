@@ -1,9 +1,10 @@
 import type { Action, ApplyResult, GameEvent } from "./actions";
 import type { GameState, PartialHand, Resource, Seat } from "./types";
-import { RESOURCES } from "./types";
+import { RESOURCES, handTotal } from "./types";
 import { botName, createLobby, makeSeat } from "./setup";
-import { vertexHexes } from "./board";
-import { canPlaceRoad, canPlaceSettlement } from "./legal";
+import { hexVertices, vertexHexes } from "./board";
+import { buildingOwnerAt, canPlaceRoad, canPlaceSettlement } from "./legal";
+import { makeRng, rollDie } from "./rng";
 
 const MAX_SEATS = 4;
 
@@ -75,7 +76,7 @@ export function apply(state: GameState, action: Action, seat: number): ApplyResu
     case "setup":
       return applySetup(s, action, seat);
     case "play":
-      return err(`Action not available in ${state.phase} phase yet`);
+      return applyPlay(s, action, seat);
     case "finished":
       return err("Game is over");
   }
@@ -199,4 +200,123 @@ function startPlay(s: GameState, firstSeat: number): void {
     devPlayedThisTurn: false,
   };
   log(s, `${s.seats[firstSeat]!.name} to roll.`);
+}
+
+// ---- play phase ----
+
+function applyPlay(s: GameState, action: Action, seat: number): ApplyResult {
+  const turn = s.turn!;
+  switch (action.type) {
+    case "rollDice": {
+      if (seat !== s.activeSeat) return err("Not your turn");
+      if (turn.hasRolled) return err("Already rolled this turn");
+      const rng = makeRng(`${s.seed}:roll:${s.version}`);
+      const dice: [number, number] = [rollDie(rng), rollDie(rng)];
+      turn.dice = dice;
+      turn.hasRolled = true;
+      const sum = dice[0] + dice[1];
+      const events: GameEvent[] = [{ type: "rolled", dice, by: seat }];
+      log(s, `${s.seats[seat]!.name} rolled ${sum}.`);
+      if (sum === 7) {
+        turn.mustMoveRobber = true;
+        s.pendingDiscards = {};
+        for (const st of s.seats) {
+          const total = handTotal(st.resources);
+          if (total > 7) s.pendingDiscards[st.id] = Math.floor(total / 2);
+        }
+        if (Object.keys(s.pendingDiscards).length > 0)
+          log(s, "The robber stirs — overstocked players must discard.");
+      } else {
+        const gains = produce(s, sum);
+        events.push({ type: "produced", gains });
+      }
+      return ok(s, events);
+    }
+    case "endTurn": {
+      if (seat !== s.activeSeat) return err("Not your turn");
+      if (!turn.hasRolled) return err("Roll before ending your turn");
+      if (turn.mustMoveRobber) return err("Move the robber first");
+      if (Object.keys(s.pendingDiscards).length > 0) return err("Discards pending");
+      if (s.trade) return err("Resolve the open trade first");
+      endTurn(s);
+      return ok(s);
+    }
+    default:
+      return err(`Action '${action.type}' not available yet`);
+  }
+}
+
+/** Distribute resources for a non-7 roll, respecting the multi-claimant bank rule. */
+function produce(s: GameState, sum: number): Record<number, PartialHand> {
+  // demand[seat][res]
+  const demand: Record<number, PartialHand> = {};
+  const totalPerRes: Record<Resource, number> = {
+    brick: 0,
+    wood: 0,
+    sheep: 0,
+    wheat: 0,
+    ore: 0,
+  };
+  for (let h = 0; h < s.board.tiles.length; h++) {
+    if (h === s.robberHex) continue;
+    const tile = s.board.tiles[h]!;
+    if (tile.terrain === "desert" || tile.num !== sum) continue;
+    const res = tile.terrain as Resource;
+    for (const v of hexVertices(h)) {
+      const owner = buildingOwnerAt(s, v);
+      if (owner === null) continue;
+      const isCity = s.seats[owner]!.buildings.cities.includes(v);
+      const amt = isCity ? 2 : 1;
+      demand[owner] ??= {};
+      demand[owner]![res] = (demand[owner]![res] ?? 0) + amt;
+      totalPerRes[res] += amt;
+    }
+  }
+  // Apply bank rule: if total demand for a resource exceeds the bank and more
+  // than one seat claims it, nobody gets it; a lone claimant gets what's left.
+  const gains: Record<number, PartialHand> = {};
+  for (const res of RESOURCES) {
+    if (totalPerRes[res] === 0) continue;
+    const claimants = Object.keys(demand).filter((k) => (demand[+k]![res] ?? 0) > 0);
+    if (totalPerRes[res] > s.bank[res]) {
+      if (claimants.length !== 1) continue; // nobody gets it
+    }
+    for (const k of claimants) {
+      const seat = +k;
+      const got = bankGive(s, seat, { [res]: demand[seat]![res]! });
+      if (got[res]) {
+        gains[seat] ??= {};
+        gains[seat]![res] = got[res];
+      }
+    }
+  }
+  return gains;
+}
+
+/** Test/AI seam: production for a given roll sum on a copy of state. */
+export function simulateProduction(
+  state: GameState,
+  sum: number,
+): { state: GameState; gains: Record<number, PartialHand> } {
+  const s = clone(state);
+  const gains = produce(s, sum);
+  return { state: s, gains };
+}
+
+function endTurn(s: GameState): void {
+  const st = s.seats[s.activeSeat]!;
+  if (st.newDevCards.length) {
+    st.devCards.push(...st.newDevCards);
+    st.newDevCards = [];
+  }
+  const idx = s.turnOrder.indexOf(s.activeSeat);
+  s.activeSeat = s.turnOrder[(idx + 1) % s.turnOrder.length]!;
+  s.turn = {
+    hasRolled: false,
+    dice: null,
+    mustMoveRobber: false,
+    freeRoads: 0,
+    devPlayedThisTurn: false,
+  };
+  log(s, `${s.seats[s.activeSeat]!.name} to roll.`);
 }
