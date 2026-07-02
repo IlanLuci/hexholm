@@ -11,12 +11,14 @@
   "durable_objects": {
     "bindings": [
       { "name": "GAME_ROOM", "class_name": "GameRoom" },
-      { "name": "STATS", "class_name": "StatsHub" }
+      { "name": "STATS", "class_name": "StatsHub" },
+      { "name": "RATE_LIMITER", "class_name": "RateLimiter" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["GameRoom"] },
-    { "tag": "v2", "new_sqlite_classes": ["StatsHub"] }
+    { "tag": "v2", "new_sqlite_classes": ["StatsHub"] },
+    { "tag": "v3", "new_sqlite_classes": ["RateLimiter"] }
   ],
   "observability": { "enabled": true }
   // ADMIN_KEY is NOT set here. Locally it comes from .dev.vars; in production set it

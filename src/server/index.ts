@@ -1,7 +1,8 @@
 import { GameRoom, type Env } from "./room";
 import { StatsHub } from "./stats";
+import { RateLimiter } from "./rate";
 
-export { GameRoom, StatsHub };
+export { GameRoom, StatsHub, RateLimiter };
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function randomCode(len = 4): string {
@@ -11,12 +12,31 @@ function randomCode(len = 4): string {
   return out;
 }
 
+function clientIp(request: Request): string {
+  return request.headers.get("cf-connecting-ip") ?? "local";
+}
+
+/** Per-IP rate limit; true if allowed. */
+async function allow(
+  env: Env,
+  ip: string,
+  bucket: string,
+  limit: number,
+  windowMs: number,
+): Promise<boolean> {
+  const stub = env.RATE_LIMITER.get(env.RATE_LIMITER.idFromName(ip));
+  return stub.check(bucket, limit, windowMs);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const ip = clientIp(request);
 
     // Create a room: returns a fresh code (the DO is created lazily on connect).
     if (request.method === "POST" && url.pathname === "/api/room") {
+      if (!(await allow(env, ip, "room", 20, 60_000)))
+        return new Response("Too many rooms, slow down", { status: 429 });
       return Response.json({ code: randomCode() });
     }
 
@@ -41,6 +61,8 @@ export default {
     // WebSocket into a room: /api/room/:code/ws
     const wsMatch = url.pathname.match(/^\/api\/room\/([A-Za-z0-9]+)\/ws$/);
     if (wsMatch) {
+      if (!(await allow(env, ip, "ws", 60, 60_000)))
+        return new Response("Too many connections, slow down", { status: 429 });
       const code = wsMatch[1]!.toUpperCase();
       const id = env.GAME_ROOM.idFromName(code);
       const stub = env.GAME_ROOM.get(id);

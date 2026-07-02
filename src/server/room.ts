@@ -6,11 +6,15 @@ import { victoryPoints } from "../shared/scoring";
 import { toView } from "./views";
 import { hasBotMove, stepBots } from "./bots";
 import type { StatsHub } from "./stats";
+import type { RateLimiter } from "./rate";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
 /** Pacing between bot actions so players can follow the game in real time.
  *  A bigger beat follows the moments that matter most (rolls, builds, steals). */
 const BOT_DELAY_MS = 1300;
+
+/** How long the active seat may stay a disconnected human before a bot takes over. */
+const IDLE_MS = 75_000;
 function delayAfter(events: GameEvent[]): number {
   if (events.some((e) => e.type === "rolled")) return 2100; // let production register
   if (events.some((e) => ["built", "stole", "played", "boughtDev", "trade"].includes(e.type)))
@@ -21,6 +25,7 @@ function delayAfter(events: GameEvent[]): number {
 export interface Env {
   GAME_ROOM: DurableObjectNamespace<GameRoom>;
   STATS: DurableObjectNamespace<StatsHub>;
+  RATE_LIMITER: DurableObjectNamespace<RateLimiter>;
   ASSETS: Fetcher;
   ADMIN_KEY: string;
 }
@@ -149,6 +154,7 @@ export class GameRoom extends DurableObject<Env> {
       await this.persist();
       this.broadcastState();
       this.reportPresence();
+      await this.scheduleNext(); // arm the idle-takeover timer if it's their turn
     }
   }
 
@@ -163,6 +169,7 @@ export class GameRoom extends DurableObject<Env> {
     if (known != null && game.seats[known]) {
       seatId = known;
       game.seats[seatId]!.connected = true;
+      game.seats[seatId]!.kind = "human"; // reclaim the seat if a bot took over while away
     } else {
       if (game.phase !== "lobby")
         return this.send(ws, { t: "error", message: "Game already in progress" });
@@ -185,7 +192,7 @@ export class GameRoom extends DurableObject<Env> {
     this.send(ws, { t: "welcome", seatId, sessionToken: token });
     this.broadcastState();
     this.reportPresence();
-    await this.scheduleBots(); // in case we reconnected on a bot's turn
+    await this.scheduleNext(); // resume bots or arm idle timer
   }
 
   private async handleAction(
@@ -203,27 +210,57 @@ export class GameRoom extends DurableObject<Env> {
     this.broadcastState();
     if (result.events && result.events.length) this.broadcastEvents(result.events);
     await this.trackTransition(prevPhase);
-    await this.scheduleBots();
+    await this.scheduleNext();
   }
 
-  /** Schedule the next bot move after `delay` ms if one is pending. */
-  private async scheduleBots(delay = BOT_DELAY_MS): Promise<void> {
-    if (this.game && hasBotMove(this.game))
+  /** Arm the next alarm: a bot move if one is pending, else an idle-takeover
+   *  timer if the active human has gone and someone is still watching. */
+  private async scheduleNext(delay = BOT_DELAY_MS): Promise<void> {
+    if (!this.game) return;
+    if (hasBotMove(this.game)) {
       await this.ctx.storage.setAlarm(Date.now() + delay);
+    } else if (this.awaitingIdleTakeover()) {
+      await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
+    } else {
+      await this.ctx.storage.deleteAlarm();
+    }
   }
 
-  /** Fired by the scheduled alarm: play one bot action, broadcast, reschedule. */
+  /** True when the seat to move is a disconnected human and a human still watches. */
+  private awaitingIdleTakeover(): boolean {
+    const g = this.game;
+    if (!g || (g.phase !== "setup" && g.phase !== "play")) return false;
+    const active = g.seats[g.activeSeat];
+    if (!active || active.kind !== "human" || active.connected) return false;
+    return g.seats.some((s) => s.kind === "human" && s.connected);
+  }
+
+  /** Fired by the scheduled alarm: play one bot action, or take over an idle seat. */
   async alarm(): Promise<void> {
     if (!this.game) return;
     const prevPhase = this.game.phase;
-    const outcome = stepBots(this.game);
-    if (!outcome.acted) return;
-    this.game = outcome.state;
-    await this.persist();
-    this.broadcastState();
-    if (outcome.events.length) this.broadcastEvents(outcome.events);
-    await this.trackTransition(prevPhase);
-    await this.scheduleBots(delayAfter(outcome.events));
+    if (hasBotMove(this.game)) {
+      const outcome = stepBots(this.game);
+      if (outcome.acted) {
+        this.game = outcome.state;
+        await this.persist();
+        this.broadcastState();
+        if (outcome.events.length) this.broadcastEvents(outcome.events);
+        await this.trackTransition(prevPhase);
+      }
+      await this.scheduleNext(delayAfter(outcome.events));
+      return;
+    }
+    if (this.awaitingIdleTakeover()) {
+      const active = this.game.seats[this.game.activeSeat]!;
+      active.kind = "bot";
+      active.connected = true;
+      this.game.log.push({ t: this.game.version, text: `${active.name} went idle — a bot took over.` });
+      if (this.game.log.length > 100) this.game.log.shift();
+      await this.persist();
+      this.broadcastState();
+    }
+    await this.scheduleNext();
   }
 
   private broadcastState(): void {
