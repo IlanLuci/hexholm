@@ -87,7 +87,7 @@ function botStep(state: GameState): Step | null {
   // 1. bots that owe a discard
   for (const [seatStr, need] of Object.entries(state.pendingDiscards)) {
     const seat = Number(seatStr);
-    if (isBot(state, seat)) return { seat, action: botDiscard(state.seats[seat]!, need) };
+    if (isBot(state, seat)) return { seat, action: botDiscard(state, seat, need) };
   }
   // 2. bots responding to an open trade offer — accept only if clearly good
   if (state.trade) {
@@ -108,21 +108,46 @@ function botStep(state: GameState): Step | null {
   if (Object.keys(state.pendingDiscards).length > 0) return null;
 
   if (state.phase === "setup") return { seat: active, action: setupMove(state, active) };
-  if (state.phase === "play") return { seat: active, action: playMove(state, active) };
+  if (state.phase === "play") {
+    const a = playMove(state, active);
+    return a ? { seat: active, action: a } : null; // null = waiting on a human trade reply
+  }
   return null;
 }
 
 // ---- discards ----
 
-function botDiscard(seat: Seat, need: number): Action {
+/** Discard `need` cards, protecting resources reserved for the bot's next build
+ *  and shedding true surplus (largest stacks) first. */
+function botDiscard(state: GameState, seat: number, need: number): Action {
+  const me = state.seats[seat]!;
+  const target = bestSettlementSpot(state, seat) != null
+    ? COSTS.settle
+    : bestCitySpot(state, seat) != null
+      ? COSTS.city
+      : {};
+  // how many of each we'd like to keep for the target build
+  const keep: Record<Resource, number> = { brick: 0, wood: 0, sheep: 0, wheat: 0, ore: 0 };
+  for (const r of RESOURCES) keep[r] = Math.min(me.resources[r], target[r] ?? 0);
+
   const hand: PartialHand = {};
   let left = need;
-  // shed from the largest stacks first
-  const order = [...RESOURCES].sort((a, b) => seat.resources[b] - seat.resources[a]);
+  // pass 1: shed from surplus beyond `keep`, biggest surplus first
+  const bySurplus = [...RESOURCES].sort(
+    (a, b) => me.resources[b] - keep[b] - (me.resources[a] - keep[a]),
+  );
+  for (const r of bySurplus) {
+    while (left > 0 && (hand[r] ?? 0) < me.resources[r] - keep[r]) {
+      hand[r] = (hand[r] ?? 0) + 1;
+      left--;
+    }
+  }
+  // pass 2: if still short, dip into protected stock (largest first)
+  const byTotal = [...RESOURCES].sort((a, b) => me.resources[b] - me.resources[a]);
   while (left > 0) {
-    for (const r of order) {
+    for (const r of byTotal) {
       if (left === 0) break;
-      if ((hand[r] ?? 0) < seat.resources[r]) {
+      if ((hand[r] ?? 0) < me.resources[r]) {
         hand[r] = (hand[r] ?? 0) + 1;
         left--;
       }
@@ -233,11 +258,28 @@ function turnPlayedDev(state: GameState): boolean {
   return state.turn?.devPlayedThisTurn ?? false;
 }
 
-function playMove(state: GameState, seat: number): Action {
+function playMove(state: GameState, seat: number): Action | null {
   const turn = state.turn!;
+  // resolve our own open trade offer first
+  if (state.trade && state.trade.from === seat) return resolveOwnTrade(state, seat);
   if (turn.mustMoveRobber) return robberMove(state, seat);
   if (!turn.hasRolled) return { type: "rollDice" };
   return turnAction(state, seat) ?? { type: "endTurn" };
+}
+
+/** Confirm with an accepter, cancel if all declined, or wait (null) on pending humans. */
+function resolveOwnTrade(state: GameState, seat: number): Action | null {
+  const responses = state.trade!.responses;
+  const accepters = Object.keys(responses)
+    .map(Number)
+    .filter((id) => responses[id] === "accept");
+  // only confirm with someone who still holds their side
+  const holder = accepters.find((id) =>
+    RESOURCES.every((r) => state.seats[id]!.resources[r] >= (state.trade!.get[r] ?? 0)),
+  );
+  if (holder != null) return { type: "confirmTrade", withSeat: holder };
+  if (!Object.values(responses).some((r) => r === "pending")) return { type: "cancelTrade" };
+  return null; // still waiting on a human to answer
 }
 
 function bestSettlementSpot(state: GameState, seat: number): number | null {
@@ -256,16 +298,39 @@ function bestCitySpot(state: GameState, seat: number): number | null {
 /** One bot action for the current (post-roll) turn, or null to end the turn. */
 function turnAction(state: GameState, seat: number): Action | null {
   const me = state.seats[seat]!;
+  const turn = state.turn!;
+  const canDev = !turnPlayedDev(state);
   const settleSpot = bestSettlementSpot(state, seat);
   const citySpot = bestCitySpot(state, seat);
+  const roadRoom = me.buildings.roads.length < SUPPLY.roads;
 
-  // 1. build now if we can afford it — expansion first, then cities
+  // 0. place any free roads left from Road Building first
+  if (turn.freeRoads > 0 && roadRoom) {
+    const road = roadTowardFrontier(state, seat) ?? anyLegalRoad(state, seat);
+    if (road != null) return { type: "buildRoad", edge: road };
+  }
+
+  // 1. Monopoly — a big swing when opponents are loaded on one resource
+  if (canDev && me.devCards.includes("mono")) {
+    const mono = bestMonopoly(state, seat);
+    if (mono && mono.gain >= 5) return { type: "playMonopoly", resource: mono.res };
+  }
+
+  // 2. build now if we can afford it — expansion first, then cities
   if (settleSpot != null && canAfford(me, COSTS.settle))
     return { type: "buildSettlement", vertex: settleSpot };
   if (citySpot != null && canAfford(me, COSTS.city))
     return { type: "buildCity", vertex: citySpot };
 
-  // 2. bank/harbor-trade our surplus toward the best reachable build
+  // 3. Year of Plenty — grab the 1–2 resources that finish a build for free
+  if (canDev && me.devCards.includes("plenty")) {
+    const picks =
+      (settleSpot != null && plentyToComplete(state, seat, COSTS.settle)) ||
+      (citySpot != null && plentyToComplete(state, seat, COSTS.city));
+    if (picks) return { type: "playYearOfPlenty", picks };
+  }
+
+  // 4. bank/harbor-trade surplus toward the best reachable build
   if (settleSpot != null) {
     const t = planTradeToward(state, seat, COSTS.settle);
     if (t) return t;
@@ -275,24 +340,29 @@ function turnAction(state: GameState, seat: number): Action | null {
     if (t) return t;
   }
 
-  // 3. buy a development card when hoarding or with nothing better to build
+  // 5. propose a player trade for the one resource we're short (once per turn)
+  if (!turn.tradedThisTurn && (settleSpot != null || citySpot != null)) {
+    const offer = proposePlayerTrade(state, seat, settleSpot != null ? COSTS.settle : COSTS.city);
+    if (offer) return offer;
+  }
+
+  // 6. Road Building — free expansion / longest-road pressure
+  if (canDev && me.devCards.includes("road") && roadRoom && roadTowardFrontier(state, seat) != null)
+    return { type: "playRoadBuilding" };
+
+  // 7. buy a development card when hoarding or with nothing better to build
   const flush = handTotal(me.resources) >= 7;
   if (state.devDeck.length > 0 && canAfford(me, COSTS.dev) && (flush || (settleSpot == null && citySpot == null)))
     return { type: "buyDev" };
 
-  // 4. build a road toward new land when we can expand but have no open spot yet
-  if (
-    settleSpot == null &&
-    me.buildings.settlements.length < SUPPLY.settlements &&
-    me.buildings.roads.length < SUPPLY.roads &&
-    canAfford(me, COSTS.road)
-  ) {
+  // 8. build a road toward new land when we can expand but have no open spot yet
+  if (settleSpot == null && me.buildings.settlements.length < SUPPLY.settlements && roadRoom && canAfford(me, COSTS.road)) {
     const road = roadTowardFrontier(state, seat);
     if (road != null) return { type: "buildRoad", edge: road };
   }
 
-  // 5. play a knight when it's genuinely worthwhile
-  if (!turnPlayedDev(state) && me.devCards.includes("knight") && knightWorthwhile(state, seat))
+  // 9. play a knight when it's genuinely worthwhile
+  if (canDev && me.devCards.includes("knight") && knightWorthwhile(state, seat))
     return robberMoveAsKnight(state, seat);
 
   return null;
@@ -356,6 +426,73 @@ function roadTowardFrontier(state: GameState, seat: number): number | null {
     }
   }
   return best;
+}
+
+/** Resource opponents collectively hold the most of (best Monopoly target). */
+function bestMonopoly(state: GameState, seat: number): { res: Resource; gain: number } | null {
+  let best: Resource | null = null;
+  let bestGain = 0;
+  for (const r of RESOURCES) {
+    let gain = 0;
+    for (const st of state.seats) if (st.id !== seat) gain += st.resources[r];
+    if (gain > bestGain) {
+      bestGain = gain;
+      best = r;
+    }
+  }
+  return best ? { res: best, gain: bestGain } : null;
+}
+
+/** Two Year-of-Plenty picks that (with what we hold) complete `cost`, or null. */
+function plentyToComplete(
+  state: GameState,
+  seat: number,
+  cost: PartialHand,
+): [Resource, Resource] | null {
+  const me = state.seats[seat]!;
+  const need: Resource[] = [];
+  for (const r of RESOURCES) {
+    let n = (cost[r] ?? 0) - me.resources[r];
+    while (n > 0) {
+      need.push(r);
+      n--;
+    }
+  }
+  if (need.length === 0 || need.length > 2) return null;
+  if (!need.every((r) => state.bank[r] > 0)) return null;
+  if (need.length === 2) return [need[0]!, need[1]!];
+  // exactly one short → take it plus a useful extra
+  const extra =
+    RESOURCES.find((r) => (cost[r] ?? 0) > 0 && r !== need[0] && state.bank[r] > 0) ??
+    RESOURCES.find((r) => state.bank[r] > 0) ??
+    need[0]!;
+  return [need[0]!, extra];
+}
+
+function anyLegalRoad(state: GameState, seat: number): number | null {
+  for (let e = 0; e < EDGE_COUNT; e++) if (canPlaceRoad(state, seat, e, {})) return e;
+  return null;
+}
+
+/** Offer surplus for the single resource we're short of a build, 1:1 (once/turn). */
+function proposePlayerTrade(state: GameState, seat: number, cost: PartialHand): Action | null {
+  const me = state.seats[seat]!;
+  if (state.seats.length < 2) return null;
+  const need = deficitFor(me, cost);
+  const needList = RESOURCES.filter((r) => need[r]);
+  if (needList.length !== 1) return null; // only clean single-resource asks
+  const want = needList[0]!;
+  const amt = Math.min(need[want]!, 2);
+  const giveRes = bestBy(
+    RESOURCES.filter((r) => r !== want && me.resources[r] - (cost[r] ?? 0) >= amt),
+    (r) => me.resources[r] - (cost[r] ?? 0),
+  );
+  if (giveRes == null) return null;
+  const give: PartialHand = {};
+  give[giveRes] = amt;
+  const get: PartialHand = {};
+  get[want] = amt;
+  return { type: "proposeTrade", give, get };
 }
 
 function knightWorthwhile(state: GameState, seat: number): boolean {
@@ -450,7 +587,11 @@ function chooseRobberHex(state: GameState, seat: number): number {
       const on =
         st.buildings.settlements.filter((v) => verts.includes(v)).length +
         st.buildings.cities.filter((v) => verts.includes(v)).length * 2;
-      if (on > 0) score += on * (1 + victoryPoints(state, st.id));
+      if (on > 0) {
+        const vp = victoryPoints(state, st.id);
+        // strongly prefer choking a rival who is close to winning
+        score += on * (1 + vp) + (vp >= 8 ? 100 : 0);
+      }
     }
     if (score > bestScore) {
       bestScore = score;

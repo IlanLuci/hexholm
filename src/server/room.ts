@@ -15,6 +15,9 @@ const BOT_DELAY_MS = 1300;
 
 /** How long the active seat may stay a disconnected human before a bot takes over. */
 const IDLE_MS = 75_000;
+
+/** How long a bot waits for humans to answer its trade offer before withdrawing it. */
+const TRADE_WAIT_MS = 9_000;
 function delayAfter(events: GameEvent[]): number {
   if (events.some((e) => e.type === "rolled")) return 2100; // let production register
   if (events.some((e) => ["built", "stole", "played", "boughtDev", "trade"].includes(e.type)))
@@ -219,11 +222,22 @@ export class GameRoom extends DurableObject<Env> {
     if (!this.game) return;
     if (hasBotMove(this.game)) {
       await this.ctx.storage.setAlarm(Date.now() + delay);
+    } else if (this.botTradeAwaitingHumans()) {
+      await this.ctx.storage.setAlarm(Date.now() + TRADE_WAIT_MS);
     } else if (this.awaitingIdleTakeover()) {
       await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
     } else {
       await this.ctx.storage.deleteAlarm();
     }
+  }
+
+  /** A bot's own trade offer is on the table, waiting on a human to respond. */
+  private botTradeAwaitingHumans(): boolean {
+    const g = this.game;
+    if (!g || !g.trade || g.seats[g.trade.from]?.kind !== "bot") return false;
+    return Object.entries(g.trade.responses).some(
+      ([id, r]) => r === "pending" && g.seats[+id]?.kind === "human",
+    );
   }
 
   /** True when the seat to move is a disconnected human and a human still watches. */
@@ -249,6 +263,18 @@ export class GameRoom extends DurableObject<Env> {
         await this.trackTransition(prevPhase);
       }
       await this.scheduleNext(delayAfter(outcome.events));
+      return;
+    }
+    // a bot's trade offer timed out waiting on a human — withdraw it and move on
+    if (this.botTradeAwaitingHumans()) {
+      const from = this.game.trade!.from;
+      const res = apply(this.game, { type: "cancelTrade" }, from);
+      if (res.state) {
+        this.game = res.state;
+        await this.persist();
+        this.broadcastState();
+      }
+      await this.scheduleNext();
       return;
     }
     if (this.awaitingIdleTakeover()) {

@@ -410,6 +410,7 @@ function applyPlay(s: GameState, action: Action, seat: number): ApplyResult {
       const responses: Record<number, "pending" | "accept" | "reject"> = {};
       for (const st of s.seats) if (st.id !== seat) responses[st.id] = "pending";
       s.trade = { from: seat, give: action.give, get: action.get, responses };
+      s.turn!.tradedThisTurn = true;
       log(s, `${s.seats[seat]!.name} proposed a trade.`);
       return ok(s);
     }

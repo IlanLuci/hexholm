@@ -50,6 +50,9 @@ export interface TurnState {
   mustMoveRobber: boolean;
   freeRoads: number;
   devPlayedThisTurn: boolean;
+  /** Set once the active seat has proposed a player trade this turn (optional so
+   *  existing state literals stay valid; used by bots to avoid re-proposing). */
+  tradedThisTurn?: boolean;
 }
 
 export interface TradeState {
