@@ -8,12 +8,14 @@ import {
   hexVertices,
   vertexHexes,
   vertexAdjacent,
+  vertexEdges,
   edgeVertices,
 } from "../shared/board";
 import {
   canPlaceSettlement,
   canPlaceRoad,
   buildingOwnerAt,
+  roadOwnerAt,
   legalRobberHexes,
   tradeRatio,
 } from "../shared/legal";
@@ -306,7 +308,7 @@ function turnAction(state: GameState, seat: number): Action | null {
 
   // 0. place any free roads left from Road Building first
   if (turn.freeRoads > 0 && roadRoom) {
-    const road = roadTowardFrontier(state, seat) ?? anyLegalRoad(state, seat);
+    const road = plannedRoad(state, seat) ?? anyLegalRoad(state, seat);
     if (road != null) return { type: "buildRoad", edge: road };
   }
 
@@ -347,7 +349,7 @@ function turnAction(state: GameState, seat: number): Action | null {
   }
 
   // 6. Road Building — free expansion / longest-road pressure
-  if (canDev && me.devCards.includes("road") && roadRoom && roadTowardFrontier(state, seat) != null)
+  if (canDev && me.devCards.includes("road") && roadRoom && plannedRoad(state, seat) != null)
     return { type: "playRoadBuilding" };
 
   // 7. buy a development card when hoarding or with nothing better to build
@@ -355,9 +357,9 @@ function turnAction(state: GameState, seat: number): Action | null {
   if (state.devDeck.length > 0 && canAfford(me, COSTS.dev) && (flush || (settleSpot == null && citySpot == null)))
     return { type: "buyDev" };
 
-  // 8. build a road toward new land when we can expand but have no open spot yet
+  // 8. build a road toward the best reachable future settlement (planned expansion)
   if (settleSpot == null && me.buildings.settlements.length < SUPPLY.settlements && roadRoom && canAfford(me, COSTS.road)) {
-    const road = roadTowardFrontier(state, seat);
+    const road = plannedRoad(state, seat);
     if (road != null) return { type: "buildRoad", edge: road };
   }
 
@@ -406,6 +408,71 @@ function planTradeToward(state: GameState, seat: number, cost: PartialHand): Act
   )[0];
   if (!give || !get || give.r === get) return null;
   return { type: "bankTrade", give: give.r, get };
+}
+
+/** Multi-turn plan: search outward over the road network for the best *reachable*
+ *  future settlement spot (value per road invested) and return the next road to
+ *  build toward it. This lets bots lay roads with a destination in mind. */
+function expansionPlan(
+  state: GameState,
+  seat: number,
+): { target: number; nextEdge: number; roads: number } | null {
+  const me = state.seats[seat]!;
+  const start = new Set<number>();
+  for (const v of [...me.buildings.settlements, ...me.buildings.cities]) start.add(v);
+  for (const e of me.buildings.roads) {
+    const [a, b] = edgeVertices(e);
+    start.add(a);
+    start.add(b);
+  }
+  if (start.size === 0) return null;
+
+  const dist = new Map<number, number>();
+  const firstEdge = new Map<number, number>(); // first road (from our net) on the path to a vertex
+  const queue: number[] = [];
+  for (const v of start) {
+    dist.set(v, 0);
+    queue.push(v);
+  }
+  for (let qi = 0; qi < queue.length; qi++) {
+    const v = queue[qi]!;
+    const d = dist.get(v)!;
+    if (d > 4) continue; // don't plan absurdly far ahead
+    // cannot chain roads through a vertex an opponent occupies
+    const owner = buildingOwnerAt(state, v);
+    if (d > 0 && owner !== null && owner !== seat) continue;
+    for (const e of vertexEdges(v)) {
+      if (roadOwnerAt(state, e) !== null) continue; // can only build on empty edges
+      const [a, b] = edgeVertices(e);
+      const w = a === v ? b : a;
+      if (dist.has(w)) continue;
+      dist.set(w, d + 1);
+      firstEdge.set(w, d === 0 ? e : firstEdge.get(v)!);
+      queue.push(w);
+    }
+  }
+
+  let best: { target: number; nextEdge: number; roads: number } | null = null;
+  let bestScore = 0;
+  for (const [v, d] of dist) {
+    if (d < 1 || d > 4) continue;
+    if (buildingOwnerAt(state, v) !== null) continue;
+    if (vertexAdjacent(v).some((n) => buildingOwnerAt(state, n) !== null)) continue; // distance rule
+    const score = vertexScore(state, v) / d; // value per road invested
+    if (score > bestScore) {
+      bestScore = score;
+      best = { target: v, nextEdge: firstEdge.get(v)!, roads: d };
+    }
+  }
+  return best;
+}
+
+/** The next road to build toward the best reachable future settlement (or a
+ *  high-value adjacent frontier as a fallback). */
+function plannedRoad(state: GameState, seat: number): number | null {
+  const plan = expansionPlan(state, seat);
+  if (plan != null && canPlaceRoad(state, seat, plan.nextEdge, {})) return plan.nextEdge;
+  return roadTowardFrontier(state, seat);
 }
 
 /** A legal road whose endpoints reach an unclaimed, high-value frontier vertex. */
