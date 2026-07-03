@@ -9,9 +9,10 @@ import type { StatsHub } from "./stats";
 import type { RateLimiter } from "./rate";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
-/** Pacing between bot actions so players can follow the game in real time.
- *  A bigger beat follows the moments that matter most (rolls, builds, steals). */
-const BOT_DELAY_MS = 1300;
+/** Pacing between bot actions so players can follow the game and the bots feel
+ *  a touch more human. A bigger beat follows the moments that matter most, and a
+ *  little random jitter keeps the rhythm from feeling robotic. */
+const BOT_DELAY_MS = 1700;
 
 /** How long the active seat may stay a disconnected human before a bot takes over. */
 const IDLE_MS = 75_000;
@@ -19,10 +20,11 @@ const IDLE_MS = 75_000;
 /** How long a bot waits for humans to answer its trade offer before withdrawing it. */
 const TRADE_WAIT_MS = 9_000;
 function delayAfter(events: GameEvent[]): number {
-  if (events.some((e) => e.type === "rolled")) return 2100; // let production register
-  if (events.some((e) => ["built", "stole", "played", "boughtDev", "trade"].includes(e.type)))
-    return 1700;
-  return BOT_DELAY_MS;
+  let base = BOT_DELAY_MS;
+  if (events.some((e) => e.type === "rolled")) base = 2600; // let production register
+  else if (events.some((e) => ["built", "stole", "played", "boughtDev", "trade"].includes(e.type)))
+    base = 2200;
+  return base + Math.floor(Math.random() * 500); // human-like jitter
 }
 
 export interface Env {

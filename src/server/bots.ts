@@ -19,7 +19,7 @@ import {
   legalRobberHexes,
   tradeRatio,
 } from "../shared/legal";
-import { victoryPoints } from "../shared/scoring";
+import { victoryPoints, longestRoadLength } from "../shared/scoring";
 
 export interface BotOutcome {
   state: GameState;
@@ -208,23 +208,92 @@ function bestBy<T>(items: T[], score: (t: T) => number): T | null {
   return best;
 }
 
+// ---- position evaluation (pick the build that most improves our position) ----
+
+/** Pip-weighted expected resource income across the seat's buildings. */
+function expectedProduction(state: GameState, seat: number): number {
+  const me = state.seats[seat]!;
+  let p = 0;
+  const add = (v: number, mult: number) => {
+    for (const h of vertexHexes(v)) {
+      const t = state.board.tiles[h]!;
+      if (t.terrain !== "desert") p += pipValue(t.num) * mult;
+    }
+  };
+  for (const v of me.buildings.settlements) add(v, 1);
+  for (const v of me.buildings.cities) add(v, 2);
+  return p;
+}
+
+/** Distinct dice numbers the seat produces on — a proxy for income reliability. */
+function numberDiversity(state: GameState, seat: number): number {
+  const me = state.seats[seat]!;
+  const nums = new Set<number>();
+  for (const v of [...me.buildings.settlements, ...me.buildings.cities])
+    for (const h of vertexHexes(v)) {
+      const n = state.board.tiles[h]!.num;
+      if (n != null) nums.add(n);
+    }
+  return nums.size;
+}
+
+function portScore(state: GameState, seat: number): number {
+  const me = state.seats[seat]!;
+  const myVerts = new Set<number>([...me.buildings.settlements, ...me.buildings.cities]);
+  let s = 0;
+  for (const port of state.board.ports)
+    if (port.vertices.some((v) => myVerts.has(v))) s += port.type === "any" ? 1 : 1.6;
+  return s;
+}
+
+/** Heuristic value of a position for `seat` (higher is better). */
+function evaluate(state: GameState, seat: number): number {
+  const me = state.seats[seat]!;
+  const hand = handTotal(me.resources);
+  return (
+    1000 * victoryPoints(state, seat) +
+    6 * expectedProduction(state, seat) +
+    7 * resourcesOwned(state, seat).size +
+    4 * numberDiversity(state, seat) +
+    3 * longestRoadLength(state, seat) +
+    5 * me.playedKnights +
+    4 * portScore(state, seat) +
+    2 * (me.devCards.length + me.newDevCards.length) -
+    Math.max(0, hand - 7) * 3
+  );
+}
+
+function evalAfter(state: GameState, seat: number, action: Action): number {
+  const r = apply(state, action, seat);
+  return r.state ? evaluate(r.state, seat) : -Infinity;
+}
+
+/** Among directly-affordable settlements and cities, the one that most improves
+ *  our evaluated position (contextual settle-vs-city-vs-where), or null. */
+function bestBuildableNow(state: GameState, seat: number): Action | null {
+  const me = state.seats[seat]!;
+  const opts: Action[] = [];
+  if (me.buildings.settlements.length < SUPPLY.settlements && canAfford(me, COSTS.settle))
+    for (let v = 0; v < VERTEX_COUNT; v++)
+      if (canPlaceSettlement(state, seat, v, { setup: false }))
+        opts.push({ type: "buildSettlement", vertex: v });
+  if (me.buildings.cities.length < SUPPLY.cities && canAfford(me, COSTS.city))
+    for (const v of me.buildings.settlements) opts.push({ type: "buildCity", vertex: v });
+  return bestBy(opts, (a) => evalAfter(state, seat, a));
+}
+
 // ---- setup ----
 
 function setupMove(state: GameState, seat: number): Action {
   const setup = state.setup!;
   if (setup.step === "settle") {
-    const owned = resourcesOwned(state, seat);
+    // draft the spot that yields the best evaluated position (income, diversity,
+    // number spread, ports — and, in round 2, the resources it grants)
     let best = -1;
     let bestScore = -Infinity;
     for (let v = 0; v < VERTEX_COUNT; v++) {
       if (!canPlaceSettlement(state, seat, v, { setup: true })) continue;
-      let s = vertexScore(state, v);
-      // value covering resources we don't yet produce (round-2 complementarity)
-      for (const h of vertexHexes(v)) {
-        const t = state.board.tiles[h]!;
-        if (t.terrain !== "desert" && !owned.has(t.terrain as Resource)) s += 2;
-      }
-      if (touchesPort(state, v)) s += 1;
+      const s = evalAfter(state, seat, { type: "placeSettlement", vertex: v });
       if (s > bestScore) {
         bestScore = s;
         best = v;
@@ -318,11 +387,9 @@ function turnAction(state: GameState, seat: number): Action | null {
     if (mono && mono.gain >= 5) return { type: "playMonopoly", resource: mono.res };
   }
 
-  // 2. build now if we can afford it — expansion first, then cities
-  if (settleSpot != null && canAfford(me, COSTS.settle))
-    return { type: "buildSettlement", vertex: settleSpot };
-  if (citySpot != null && canAfford(me, COSTS.city))
-    return { type: "buildCity", vertex: citySpot };
+  // 2. build the affordable settlement/city that most improves our position
+  const build = bestBuildableNow(state, seat);
+  if (build) return build;
 
   // 3. Year of Plenty — grab the 1–2 resources that finish a build for free
   if (canDev && me.devCards.includes("plenty")) {
@@ -658,8 +725,9 @@ function chooseRobberHex(state: GameState, seat: number): number {
         st.buildings.cities.filter((v) => verts.includes(v)).length * 2;
       if (on > 0) {
         const vp = victoryPoints(state, st.id);
-        // strongly prefer choking a rival who is close to winning
-        score += on * (1 + vp) + (vp >= 8 ? 100 : 0);
+        const hexPip = pipValue(state.board.tiles[h]!.num); // how much income we choke
+        // block the most productive hexes of the strongest rivals; hammer near-winners
+        score += on * (1 + hexPip) * (1 + vp) + (vp >= 8 ? 200 : 0);
       }
     }
     if (score > bestScore) {
