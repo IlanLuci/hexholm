@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { C, font } from "../theme";
 import { HexLogo } from "../components/icons";
 import type { Status } from "../net";
@@ -15,7 +15,15 @@ export function Landing({
     () => new URLSearchParams(location.search).get("room")?.toUpperCase() ?? "",
   );
   const [busy, setBusy] = useState(false);
+  const [players, setPlayers] = useState<number | null>(null);
   const invited = !!new URLSearchParams(location.search).get("room");
+
+  useEffect(() => {
+    fetch("/api/public-stats")
+      .then((r) => r.json())
+      .then((s: { uniquePlayers: number }) => setPlayers(s.uniquePlayers))
+      .catch(() => {});
+  }, []);
 
   const remember = () => localStorage.setItem("hexholm:name", name.trim());
 
@@ -51,7 +59,8 @@ export function Landing({
           <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 22, color: C.cream, letterSpacing: ".5px" }}>HEXHOLM</span>
         </div>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 9, color: "#B9C6BC", fontWeight: 700, fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>
-          <span style={{ width: 8, height: 8, background: "#8FBF6A", borderRadius: 2 }} /> 2–4 settlers
+          <span style={{ width: 8, height: 8, background: "#8FBF6A", borderRadius: 2 }} />
+          {players != null ? `${players.toLocaleString()} settler${players === 1 ? "" : "s"} played` : "Play free"}
         </span>
       </div>
 

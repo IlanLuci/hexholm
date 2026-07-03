@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#243a45"/>
+      <stop offset="100%" stop-color="#1A2A32"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- decorative hex cluster -->
+  <g opacity="0.5" transform="translate(880 315)">
+    <path d="M0 -120 L104 -60 V60 L0 120 L-104 60 V-60 Z" fill="#3F6B4E"/>
+    <path d="M104 -60 L208 -120 V0 L104 60 Z" transform="translate(0 0)" fill="none"/>
+    <g transform="translate(156 90)"><path d="M0 -120 L104 -60 V60 L0 120 L-104 60 V-60 Z" fill="#B85C38"/></g>
+    <g transform="translate(-156 90)"><path d="M0 -120 L104 -60 V60 L0 120 L-104 60 V-60 Z" fill="#E0A73A"/></g>
+    <g transform="translate(0 210)"><path d="M0 -120 L104 -60 V60 L0 120 L-104 60 V-60 Z" fill="#75828E"/></g>
+  </g>
+
+  <!-- logo + wordmark -->
+  <g transform="translate(90 96)">
+    <path d="M30 0 L64 20 V56 L30 76 L-4 56 V20 Z" fill="#D9A441"/>
+    <text x="88" y="52" font-family="Zilla Slab, Georgia, serif" font-weight="700" font-size="46" fill="#F4ECDD" letter-spacing="1">HEXHOLM</text>
+  </g>
+
+  <!-- headline -->
+  <text x="90" y="330" font-family="Zilla Slab, Georgia, serif" font-weight="700" font-size="92" fill="#F7EFDE">Build. Trade.</text>
+  <text x="90" y="424" font-family="Zilla Slab, Georgia, serif" font-weight="700" font-size="92" fill="#F7EFDE">Outwit the island.</text>
+
+  <!-- subline -->
+  <text x="92" y="500" font-family="Manrope, Arial, sans-serif" font-weight="600" font-size="30" fill="#CBBEA4">Free real-time multiplayer Catan-style strategy —</text>
+  <text x="92" y="540" font-family="Manrope, Arial, sans-serif" font-weight="600" font-size="30" fill="#CBBEA4">play in your browser vs friends or AI bots.</text>
+</svg>

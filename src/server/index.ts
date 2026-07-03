@@ -40,6 +40,17 @@ export default {
       return Response.json({ code: randomCode() });
     }
 
+    // Public headline numbers for the landing page (safe subset, no auth).
+    if (url.pathname === "/api/public-stats") {
+      const stub = env.STATS.get(env.STATS.idFromName("global"));
+      const s = await stub.getStats();
+      return Response.json({
+        uniquePlayers: s.uniquePlayers,
+        gamesPlayed: s.gamesFinished,
+        onlinePlayers: s.onlinePlayers,
+      });
+    }
+
     // A player's own career stats (keyed by their unguessable guest id).
     if (url.pathname === "/api/player") {
       const pid = url.searchParams.get("pid");
