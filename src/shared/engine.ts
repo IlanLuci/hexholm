@@ -488,7 +488,7 @@ function applyPlay(s: GameState, action: Action, seat: number): ApplyResult {
       if (turn.mustMoveRobber) return err("Move the robber first");
       if (s.steal) return err("Choose who to steal from first");
       if (Object.keys(s.pendingDiscards).length > 0) return err("Discards pending");
-      if (s.trade) return err("Resolve the open trade first");
+      if (s.trade) s.trade = null; // ending your turn withdraws any open offer
       endTurn(s);
       return ok(s);
     }

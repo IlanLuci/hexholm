@@ -483,6 +483,8 @@ function proposePlayerTrade(state: GameState, seat: number, cost: PartialHand): 
   if (needList.length !== 1) return null; // only clean single-resource asks
   const want = needList[0]!;
   const amt = Math.min(need[want]!, 2);
+  // don't make a dead offer — someone at the table must actually hold what we ask
+  if (!state.seats.some((s) => s.id !== seat && s.resources[want] >= amt)) return null;
   const giveRes = bestBy(
     RESOURCES.filter((r) => r !== want && me.resources[r] - (cost[r] ?? 0) >= amt),
     (r) => me.resources[r] - (cost[r] ?? 0),

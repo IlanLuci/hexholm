@@ -341,6 +341,9 @@ export function RulesModal({ onClose }: { onClose: () => void }) {
 export function TradeOfferPrompt({ view, send }: { view: GameView; send: Send }) {
   const trade = view.trade!;
   const from = view.seats[trade.from]!;
+  const hand = view.seats[view.youSeat]!.resources ?? { brick: 0, wood: 0, sheep: 0, wheat: 0, ore: 0 };
+  // you can only accept if you actually hold everything they're asking for
+  const canFulfill = RES_ORDER.every((r) => hand[r] >= (trade.get[r] ?? 0));
   const summary = (h: typeof trade.give) => RES_ORDER.filter((r) => h[r]).map((r) => `${h[r]} ${RES_NAME[r]}`).join(", ") || "nothing";
   return (
     <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 90, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: 18, width: 300, boxShadow: "0 20px 50px rgba(0,0,0,.35)" }}>
@@ -349,8 +352,17 @@ export function TradeOfferPrompt({ view, send }: { view: GameView; send: Send })
         <span onClick={() => send({ type: "respondTrade", accept: false })} title="Dismiss (decline)" style={{ cursor: "pointer", color: C.gold, fontSize: 20, lineHeight: 1 }}>×</span>
       </div>
       <div style={{ fontSize: 12.5, color: C.muted, fontWeight: 600, lineHeight: 1.5 }}>They give <b style={{ color: C.ink }}>{summary(trade.give)}</b> for your <b style={{ color: C.ink }}>{summary(trade.get)}</b>.</div>
+      {!canFulfill && (
+        <div style={{ fontSize: 12, color: "#A2854F", fontWeight: 700, marginTop: 8 }}>You don't have {summary(trade.get)} to give.</div>
+      )}
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <button onClick={() => send({ type: "respondTrade", accept: true })} style={{ ...green, flex: 1, fontSize: 13, padding: 10 }}>Accept</button>
+        <button
+          onClick={() => canFulfill && send({ type: "respondTrade", accept: true })}
+          disabled={!canFulfill}
+          style={{ ...green, flex: 1, fontSize: 13, padding: 10, opacity: canFulfill ? 1 : 0.4, cursor: canFulfill ? "pointer" : "not-allowed" }}
+        >
+          Accept
+        </button>
         <button onClick={() => send({ type: "respondTrade", accept: false })} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: "#6B5A42", fontWeight: 700, borderRadius: 6, cursor: "pointer", fontFamily: font.body }}>Decline</button>
       </div>
     </div>
