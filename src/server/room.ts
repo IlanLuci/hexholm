@@ -236,7 +236,7 @@ export class GameRoom extends DurableObject<Env> {
 
   /** Count connected human seats — the players a quick match will start with. */
   private humanCount(): number {
-    return this.game!.seats.filter((s) => s.kind === "human").length;
+    return this.game!.seats.filter((s) => s.kind === "human" && s.connected).length;
   }
 
   /** Start a quick match immediately once the table is full of humans. */
@@ -253,18 +253,26 @@ export class GameRoom extends DurableObject<Env> {
     await this.startQuick(bots);
   }
 
-  /** Add `bots` bot seats (all auto-ready), then run the engine's start. */
+  /** Add `bots` bot seats, force every seat ready, then run the engine's start. */
   private async startQuick(bots: number): Promise<void> {
     const prevPhase = this.game!.phase;
     for (let i = 0; i < bots; i++) {
       const res = apply(this.game!, { type: "addBot" }, 0);
       if (res.state) this.game = res.state;
     }
+    // A quick match commits everyone at the table — force-ready every seat so a
+    // stray unready join can't block the engine's start.
+    for (const seat of this.game!.seats) seat.ready = true;
     const res = apply(this.game!, { type: "start" }, 0);
-    if (res.error || !res.state) return;
-    this.game = res.state;
-    this.quickMatch = false; // the match has begun; drop the deadline
+    // Drop the deadline unconditionally: on success the match has begun; on
+    // failure we must still clear it so the alarm cannot busy-loop on a past time.
+    this.quickMatch = false;
     this.quickDeadline = 0;
+    if (res.error || !res.state) {
+      await this.persist();
+      return;
+    }
+    this.game = res.state;
     await this.persist();
     this.broadcastState();
     await this.trackTransition(prevPhase);

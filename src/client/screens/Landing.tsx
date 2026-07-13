@@ -145,19 +145,6 @@ const inputStyle: React.CSSProperties = {
   width: 240,
 };
 
-const primaryBtn: React.CSSProperties = {
-  background: C.terracotta,
-  border: "none",
-  color: "#FBF3E4",
-  fontFamily: font.body,
-  fontWeight: 700,
-  fontSize: 16,
-  padding: "16px 30px",
-  borderRadius: 5,
-  cursor: "pointer",
-  letterSpacing: ".3px",
-};
-
 const quickBtn: React.CSSProperties = {
   background: C.terracotta,
   border: "none",

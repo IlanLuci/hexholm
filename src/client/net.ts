@@ -35,7 +35,7 @@ export function useGame(): Game {
   const retry = useRef<number | null>(null);
   const requeued = useRef(false);
   const entered = useRef(false); // flips true once we're actually in a game
-  const quickPlayRef = useRef<(name: string) => void>(() => {});
+  const quickPlayRef = useRef<(name: string, isRetry?: boolean) => void>(() => {});
 
   const open = useCallback(() => {
     const p = params.current;
@@ -69,7 +69,7 @@ export function useGame(): Game {
           requeued.current = true;
           alive.current = false;
           ws.current?.close();
-          quickPlayRef.current?.(p2.name);
+          quickPlayRef.current?.(p2.name, true);
           return;
         }
         setError(msg.message);
@@ -100,8 +100,8 @@ export function useGame(): Game {
   );
 
   const quickPlay = useCallback(
-    (name: string) => {
-      requeued.current = false;
+    (name: string, isRetry = false) => {
+      if (!isRetry) requeued.current = false;
       fetch("/api/quickplay", { method: "POST" })
         .then((r) => r.json())
         .then(({ code }: { code: string }) => connect(code, name, true))
@@ -120,6 +120,7 @@ export function useGame(): Game {
 
   const leave = useCallback(() => {
     alive.current = false;
+    entered.current = false;
     if (retry.current) window.clearTimeout(retry.current);
     ws.current?.close();
     ws.current = null;
