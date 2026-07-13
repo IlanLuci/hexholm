@@ -2,16 +2,21 @@ import { useEffect, useState } from "react";
 import { C, font } from "../theme";
 import { HexLogo } from "../components/icons";
 import type { Status } from "../net";
+import { useOnline } from "../useOnline";
 
 export function Landing({
   connect,
   quickPlay,
+  playOffline,
   status,
 }: {
   connect: (code: string, name: string) => void;
   quickPlay: (name: string) => void;
+  playOffline: (bots: 2 | 3, name: string) => void;
   status: Status;
 }) {
+  const online = useOnline();
+  const [botCount, setBotCount] = useState<2 | 3>(3); // default 4-player table (3 bots)
   const [name, setName] = useState(localStorage.getItem("hexholm:name") ?? "");
   const [code, setCode] = useState(
     () => new URLSearchParams(location.search).get("room")?.toUpperCase() ?? "",
@@ -46,6 +51,10 @@ export function Landing({
     remember();
     quickPlay(name.trim());
   };
+  const playOff = () => {
+    remember();
+    playOffline(botCount, name.trim());
+  };
 
   const connecting = busy || status === "connecting";
 
@@ -65,8 +74,19 @@ export function Landing({
           <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 22, color: C.cream, letterSpacing: ".5px" }}>HEXHOLM</span>
         </div>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 9, color: "#B9C6BC", fontWeight: 700, fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>
-          <span style={{ width: 8, height: 8, background: "#8FBF6A", borderRadius: 2 }} />
-          {players != null ? `${players.toLocaleString()} settler${players === 1 ? "" : "s"}` : "Play free"}
+          {!online ? (
+            <>
+              <span style={{ width: 8, height: 8, background: "#D9A441", borderRadius: 2 }} />
+              Offline — play the bots
+            </>
+          ) : players != null ? (
+            <>
+              <span style={{ width: 8, height: 8, background: "#8FBF6A", borderRadius: 2 }} />
+              {`${players.toLocaleString()} settler${players === 1 ? "" : "s"}`}
+            </>
+          ) : (
+            "Play free"
+          )}
         </span>
       </div>
 
@@ -84,36 +104,72 @@ export function Landing({
             <span style={{ color: "#CBBEA4", fontWeight: 600, fontSize: 13 }}>— enter your name and join below</span>
           </div>
         )}
-        <div style={{ marginTop: invited ? 16 : 40, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
-            maxLength={20}
-            style={inputStyle}
-          />
-          <button onClick={quick} disabled={connecting} style={quickBtn}>
-            {connecting ? "Finding a match…" : "⚡ Quick Play"}
-          </button>
-        </div>
-        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-          <button onClick={create} disabled={connecting} style={ghostBtn}>
-            Create private table
-          </button>
-          <span style={{ color: "#8E937F", fontWeight: 600, fontSize: 13 }}>or join with a code below</span>
-        </div>
-        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-          <input
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="Room code"
-            maxLength={6}
-            style={{ ...inputStyle, width: 160, letterSpacing: 3, fontWeight: 700 }}
-          />
-          <button onClick={join} disabled={connecting} style={ghostBtn}>
-            Join table →
-          </button>
-        </div>
+        {online ? (
+          <>
+            <div style={{ marginTop: invited ? 16 : 40, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                maxLength={20}
+                style={inputStyle}
+              />
+              <button onClick={quick} disabled={connecting} style={quickBtn}>
+                {connecting ? "Finding a match…" : "⚡ Quick Play"}
+              </button>
+            </div>
+            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+              <button onClick={create} disabled={connecting} style={ghostBtn}>
+                Create private table
+              </button>
+              <span style={{ color: "#8E937F", fontWeight: 600, fontSize: 13 }}>or join with a code below</span>
+            </div>
+            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="Room code"
+                maxLength={6}
+                style={{ ...inputStyle, width: 160, letterSpacing: 3, fontWeight: 700 }}
+              />
+              <button onClick={join} disabled={connecting} style={ghostBtn}>
+                Join table →
+              </button>
+            </div>
+          </>
+        ) : (
+          <div style={{ marginTop: 40 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                maxLength={20}
+                style={inputStyle}
+              />
+              <button onClick={playOff} style={quickBtn}>▶ Play offline vs bots</button>
+            </div>
+            <div style={{ marginTop: 14, display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ color: "#8E937F", fontWeight: 700, fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>Players</span>
+              {([3, 4] as const).map((n) => {
+                const selected = (n === 4 ? 3 : 2) === botCount;
+                return (
+                  <button
+                    key={n}
+                    onClick={() => setBotCount(n === 4 ? 3 : 2)}
+                    style={{ ...ghostBtn, padding: "10px 18px", background: selected ? C.terracotta : "transparent", color: selected ? "#FBF3E4" : C.cream, borderColor: selected ? C.terracotta : "rgba(244,236,221,.35)" }}
+                  >
+                    {n}
+                  </button>
+                );
+              })}
+              <span style={{ color: "#8E937F", fontWeight: 600, fontSize: 13 }}>you + {botCount} bots</span>
+            </div>
+            <p style={{ marginTop: 18, color: "#CBBEA4", fontWeight: 500, fontSize: 14, maxWidth: 460 }}>
+              You're offline. Online matches and private tables need a connection — but you can still play a full game against the bots right here.
+            </p>
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 0, marginTop: 70, borderTop: "1px solid rgba(244,236,221,.14)", maxWidth: 640 }}>
           {[

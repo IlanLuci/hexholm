@@ -16,6 +16,7 @@ export function App() {
   useEffect(() => {
     if (reconnected.current) return;
     reconnected.current = true;
+    if (game.resumeOffline()) return; // a saved offline game takes precedence
     const room = localStorage.getItem("hexholm:room");
     const name = localStorage.getItem("hexholm:name");
     const wasQuick = localStorage.getItem("hexholm:quick") === "1";
@@ -30,7 +31,7 @@ export function App() {
 
   let screen;
   if (!view || status === "idle") {
-    screen = <Landing connect={game.connect} quickPlay={game.quickPlay} status={status} />;
+    screen = <Landing connect={game.connect} quickPlay={game.quickPlay} playOffline={game.playOffline} status={status} />;
   } else if (view.phase === "lobby") {
     screen = game.quick ? <Matching game={game} view={view} /> : <Lobby game={game} view={view} />;
   } else {
