@@ -7,6 +7,13 @@ import type { GameView } from "../../server/protocol";
 
 export function Lobby({ game, view }: { game: Game; view: GameView }) {
   const me = view.seats[view.youSeat];
+  const owner = view.youAreOwner;
+  const settings = view.settings;
+  const modeLabel = settings.setupMode === "settlementCity" ? "Settlement + city" : "Two settlements";
+  const setWinVP = (v: number) =>
+    game.send({ type: "setSettings", winVP: Math.max(7, Math.min(13, v)) });
+  const setMode = (m: "settlements" | "settlementCity") =>
+    game.send({ type: "setSettings", setupMode: m });
   const allReady = view.seats.length >= 2 && view.seats.every((s) => s.ready);
   const career = useCareer("lobby");
   const [hoverSeat, setHoverSeat] = useState<number | null>(null);
@@ -97,17 +104,48 @@ export function Lobby({ game, view }: { game: Game; view: GameView }) {
 
           <div style={{ width: 320, flexGrow: 1, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, padding: 26, alignSelf: "flex-start" }}>
             <h3 style={{ fontFamily: font.display, fontWeight: 600, fontSize: 13, letterSpacing: 1.5, textTransform: "uppercase", margin: "0 0 14px", color: C.gold }}>Table settings</h3>
-            {[
-              ["Victory points", "10"],
-              ["Players", `${view.seats.length} / 4`],
-              ["Board", "Classic island"],
-              ["Robber", "Standard (7s)"],
-            ].map(([l, v]) => (
-              <div key={l} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 0", borderBottom: `1px solid ${C.borderSoft}` }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: "#6B5A42" }}>{l}</span>
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: C.ink }}>{v}</span>
-              </div>
-            ))}
+            <div style={settingRow}>
+              <span style={settingLabel}>Victory points</span>
+              {owner ? (
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button style={stepBtn} onClick={() => setWinVP(settings.winVP - 1)} disabled={settings.winVP <= 7}>−</button>
+                  <span style={{ ...settingValue, minWidth: 20, textAlign: "center" }}>{settings.winVP}</span>
+                  <button style={stepBtn} onClick={() => setWinVP(settings.winVP + 1)} disabled={settings.winVP >= 13}>+</button>
+                </span>
+              ) : (
+                <span style={settingValue}>{settings.winVP}</span>
+              )}
+            </div>
+            <div style={settingRow}>
+              <span style={settingLabel}>Placement</span>
+              {owner ? (
+                <span style={{ display: "flex", gap: 6 }}>
+                  {(["settlements", "settlementCity"] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setMode(m)}
+                      style={{ ...toggleBtn, background: settings.setupMode === m ? C.terracotta : "transparent", color: settings.setupMode === m ? "#FBF3E4" : C.ink, borderColor: settings.setupMode === m ? C.terracotta : "#CBB98F" }}
+                    >
+                      {m === "settlements" ? "2 settlements" : "Settle + city"}
+                    </button>
+                  ))}
+                </span>
+              ) : (
+                <span style={settingValue}>{modeLabel}</span>
+              )}
+            </div>
+            <div style={settingRow}>
+              <span style={settingLabel}>Players</span>
+              <span style={settingValue}>{view.seats.length} / 4</span>
+            </div>
+            <div style={settingRow}>
+              <span style={settingLabel}>Board</span>
+              <span style={settingValue}>Classic island</span>
+            </div>
+            <div style={settingRow}>
+              <span style={settingLabel}>Robber</span>
+              <span style={settingValue}>Standard (7s)</span>
+            </div>
             <button
               onClick={() => game.send({ type: "start" })}
               disabled={!allReady}
@@ -133,3 +171,8 @@ const bigBtn: React.CSSProperties = { border: "none", fontFamily: font.body, fon
 const miniBtn: React.CSSProperties = { background: "transparent", border: "1px solid #CBB98F", color: "#6B5A42", fontWeight: 600, fontSize: 12, padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontFamily: font.body };
 const pill: React.CSSProperties = { fontSize: 12, fontWeight: 800, padding: "5px 10px", borderRadius: 20 };
 const youTag: React.CSSProperties = { fontSize: 8.5, fontWeight: 800, letterSpacing: ".5px", color: C.teal, background: C.accentGold, padding: "2px 4px", borderRadius: 3, marginLeft: 6 };
+const settingRow: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 0", borderBottom: `1px solid ${C.borderSoft}` };
+const settingLabel: React.CSSProperties = { fontSize: 13.5, fontWeight: 600, color: "#6B5A42" };
+const settingValue: React.CSSProperties = { fontSize: 13.5, fontWeight: 700, color: C.ink };
+const stepBtn: React.CSSProperties = { width: 26, height: 26, borderRadius: 5, border: "1px solid #CBB98F", background: C.panelAlt, color: C.ink, fontWeight: 800, fontSize: 15, cursor: "pointer", lineHeight: 1, padding: 0 };
+const toggleBtn: React.CSSProperties = { border: "1px solid #CBB98F", borderRadius: 5, padding: "6px 10px", fontFamily: font.body, fontWeight: 700, fontSize: 12, cursor: "pointer" };
