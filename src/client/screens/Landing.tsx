@@ -60,7 +60,7 @@ export function Landing({
         </div>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 9, color: "#B9C6BC", fontWeight: 700, fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>
           <span style={{ width: 8, height: 8, background: "#8FBF6A", borderRadius: 2 }} />
-          {players != null ? `${players.toLocaleString()} settler${players === 1 ? "" : "s"} played` : "Play free"}
+          {players != null ? `${players.toLocaleString()} settler${players === 1 ? "" : "s"}` : "Play free"}
         </span>
       </div>
 
