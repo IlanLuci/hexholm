@@ -1,7 +1,7 @@
-import type { GameState, PartialHand, Resource, Seat } from "../shared/types";
-import { RESOURCES, COSTS, SUPPLY, handTotal } from "../shared/types";
-import type { Action, GameEvent } from "../shared/actions";
-import { apply } from "../shared/engine";
+import type { GameState, PartialHand, Resource, Seat } from "./types";
+import { RESOURCES, COSTS, SUPPLY, handTotal } from "./types";
+import type { Action, GameEvent } from "./actions";
+import { apply } from "./engine";
 import {
   VERTEX_COUNT,
   EDGE_COUNT,
@@ -10,7 +10,7 @@ import {
   vertexAdjacent,
   vertexEdges,
   edgeVertices,
-} from "../shared/board";
+} from "./board";
 import {
   canPlaceSettlement,
   canPlaceRoad,
@@ -18,8 +18,8 @@ import {
   roadOwnerAt,
   legalRobberHexes,
   tradeRatio,
-} from "../shared/legal";
-import { victoryPoints, longestRoadLength } from "../shared/scoring";
+} from "./legal";
+import { victoryPoints, longestRoadLength } from "./scoring";
 
 export interface BotOutcome {
   state: GameState;
@@ -751,4 +751,20 @@ function bestSteal(state: GameState, seat: number, candidates: number[]): number
     }
   }
   return best;
+}
+
+/** Pacing between bot actions so players can follow the game and the bots feel
+ *  a touch more human. A bigger beat follows the moments that matter most, and a
+ *  little random jitter keeps the rhythm from feeling robotic. */
+export const BOT_DELAY_MS = 1700;
+
+/** How long a bot waits for humans to answer its trade offer before withdrawing it. */
+export const TRADE_WAIT_MS = 9_000;
+
+export function delayAfter(events: GameEvent[]): number {
+  let base = BOT_DELAY_MS;
+  if (events.some((e) => e.type === "rolled")) base = 2600; // let production register
+  else if (events.some((e) => ["built", "stole", "played", "boughtDev", "trade"].includes(e.type)))
+    base = 2200;
+  return base + Math.floor(Math.random() * 500); // human-like jitter
 }

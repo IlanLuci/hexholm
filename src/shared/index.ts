@@ -8,3 +8,4 @@ export * from "./setup";
 export * from "./legal";
 export * from "./scoring";
 export * from "./engine";
+export * from "./bots";

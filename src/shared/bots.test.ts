@@ -1,6 +1,6 @@
-import { createLobby, addSeat, apply } from "../shared/engine";
+import { createLobby, addSeat, apply } from "./engine";
 import { driveBots } from "./bots";
-import { victoryPoints } from "../shared/scoring";
+import { victoryPoints } from "./scoring";
 
 function allBotGame(seed: string, names = ["Ava", "B040", "Cyrus", "Dorn"]) {
   let s = createLobby("BOTS", seed);
