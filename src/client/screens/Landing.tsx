@@ -5,9 +5,11 @@ import type { Status } from "../net";
 
 export function Landing({
   connect,
+  quickPlay,
   status,
 }: {
   connect: (code: string, name: string) => void;
+  quickPlay: (name: string) => void;
   status: Status;
 }) {
   const [name, setName] = useState(localStorage.getItem("hexholm:name") ?? "");
@@ -39,6 +41,10 @@ export function Landing({
     if (!name.trim() || !code.trim()) return;
     remember();
     connect(code.trim(), name.trim());
+  };
+  const quick = () => {
+    remember();
+    quickPlay(name.trim());
   };
 
   const connecting = busy || status === "connecting";
@@ -86,9 +92,15 @@ export function Landing({
             maxLength={20}
             style={inputStyle}
           />
-          <button onClick={create} disabled={connecting} style={primaryBtn}>
-            {connecting ? "Connecting…" : "Create table"}
+          <button onClick={quick} disabled={connecting} style={quickBtn}>
+            {connecting ? "Finding a match…" : "⚡ Quick Play"}
           </button>
+        </div>
+        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+          <button onClick={create} disabled={connecting} style={ghostBtn}>
+            Create private table
+          </button>
+          <span style={{ color: "#8E937F", fontWeight: 600, fontSize: 13 }}>or join with a code below</span>
         </div>
         <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
           <input
@@ -141,6 +153,19 @@ const primaryBtn: React.CSSProperties = {
   fontWeight: 700,
   fontSize: 16,
   padding: "16px 30px",
+  borderRadius: 5,
+  cursor: "pointer",
+  letterSpacing: ".3px",
+};
+
+const quickBtn: React.CSSProperties = {
+  background: C.terracotta,
+  border: "none",
+  color: "#FBF3E4",
+  fontFamily: font.body,
+  fontWeight: 800,
+  fontSize: 17,
+  padding: "17px 34px",
   borderRadius: 5,
   cursor: "pointer",
   letterSpacing: ".3px",
