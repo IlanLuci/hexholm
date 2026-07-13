@@ -13,6 +13,6 @@
     "verbatimModuleSyntax": true,
     "noEmit": true
   },
-  "include": ["src/client", "src/shared", "src/server/protocol.ts"],
+  "include": ["src/client", "src/shared", "src/server/protocol.ts", "src/server/views.ts"],
   "exclude": ["**/*.test.ts", "src/shared/testutil.ts"]
 }
