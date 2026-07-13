@@ -60,5 +60,7 @@ export function toView(state: GameState, viewer: number): GameView {
     log: state.log,
     youSeat: viewer,
     version: state.version,
+    settings: state.settings,
+    youAreOwner: viewer === 0,
   };
 }

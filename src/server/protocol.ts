@@ -5,6 +5,7 @@ import type {
   Hand,
   Phase,
   Resource,
+  RoomSettings,
   SetupState,
   TradeState,
   TurnState,
@@ -52,6 +53,8 @@ export interface GameView {
   log: { t: number; text: string }[];
   youSeat: number;
   version: number;
+  settings: RoomSettings;
+  youAreOwner: boolean;
 }
 
 // ---- wire messages ----

@@ -42,3 +42,11 @@ test("devDeckCount replaces the deck contents", () => {
   expect(view.devDeckCount).toBe(s.devDeck.length);
   expect((view as unknown as { devDeck?: unknown }).devDeck).toBeUndefined();
 });
+
+test("toView exposes settings and marks seat 0 as the owner", () => {
+  const s = twoSeatGame();
+  s.settings = { winVP: 8, setupMode: "settlementCity" };
+  expect(toView(s, 0).settings).toEqual({ winVP: 8, setupMode: "settlementCity" });
+  expect(toView(s, 0).youAreOwner).toBe(true);
+  expect(toView(s, 1).youAreOwner).toBe(false);
+});
