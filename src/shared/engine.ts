@@ -148,6 +148,20 @@ function applyLobby(s: GameState, action: Action, seat: number): ApplyResult {
       s.seats.forEach((st, i) => (st.id = i));
       return ok(s);
     }
+    case "setSettings": {
+      if (seat !== 0) return err("Only the room owner can change settings");
+      if (action.winVP !== undefined) {
+        if (!Number.isInteger(action.winVP) || action.winVP < 7 || action.winVP > 13)
+          return err("Victory points must be a whole number from 7 to 13");
+        s.settings.winVP = action.winVP;
+      }
+      if (action.setupMode !== undefined) {
+        if (action.setupMode !== "settlements" && action.setupMode !== "settlementCity")
+          return err("Invalid placement mode");
+        s.settings.setupMode = action.setupMode;
+      }
+      return ok(s);
+    }
     case "start": {
       if (s.seats.length < 2) return err("Need at least 2 players");
       if (!s.seats.every((st) => st.ready)) return err("All players must be ready");

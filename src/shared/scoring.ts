@@ -1,8 +1,7 @@
 import { vertexEdges, edgeVertices } from "./board";
 import { buildingOwnerAt } from "./legal";
 import type { GameState } from "./types";
-
-const WIN_VP = 10;
+import { DEFAULT_SETTINGS } from "./types";
 
 function otherEndpoint(edge: number, vertex: number): number {
   const [a, b] = edgeVertices(edge);
@@ -85,5 +84,5 @@ export function victoryPoints(state: GameState, seat: number): number {
 }
 
 export function hasWon(state: GameState, seat: number): boolean {
-  return victoryPoints(state, seat) >= WIN_VP;
+  return victoryPoints(state, seat) >= (state.settings?.winVP ?? DEFAULT_SETTINGS.winVP);
 }
