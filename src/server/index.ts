@@ -41,6 +41,15 @@ export default {
       return Response.json({ code: randomCode() });
     }
 
+    // Quick Play: route the caller to a shared match code (bots fill later).
+    if (request.method === "POST" && url.pathname === "/api/quickplay") {
+      if (!(await allow(env, ip, "quickplay", 20, 60_000)))
+        return new Response("Too many quick-play requests, slow down", { status: 429 });
+      const mm = env.MATCHMAKER.get(env.MATCHMAKER.idFromName("global"));
+      const code = await mm.claim(Date.now());
+      return Response.json({ code });
+    }
+
     // Public headline numbers for the landing page (safe subset, no auth).
     if (url.pathname === "/api/public-stats") {
       const stub = env.STATS.get(env.STATS.idFromName("global"));
