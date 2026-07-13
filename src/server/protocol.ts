@@ -57,7 +57,7 @@ export interface GameView {
 // ---- wire messages ----
 
 export type ClientMessage =
-  | { t: "hello"; name: string; sessionToken?: string; playerId?: string }
+  | { t: "hello"; name: string; sessionToken?: string; playerId?: string; quick?: boolean }
   | { t: "action"; action: Action };
 
 export type ServerMessage =

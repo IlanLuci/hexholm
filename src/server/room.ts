@@ -5,6 +5,7 @@ import { apply, addSeat, createLobby } from "../shared/engine";
 import { victoryPoints } from "../shared/scoring";
 import { toView } from "./views";
 import { hasBotMove, stepBots } from "./bots";
+import { MATCH_DEADLINE_MS, deadlineBots } from "./quickmatch";
 import type { StatsHub } from "./stats";
 import type { RateLimiter } from "./rate";
 import type { Matchmaker } from "./matchmaker";
@@ -48,6 +49,8 @@ export class GameRoom extends DurableObject<Env> {
   private tokens: Record<string, number> = {};
   private seatPlayers: Record<number, string> = {}; // seatId -> persistent player id
   private gameStartMs = 0;
+  private quickMatch = false;
+  private quickDeadline = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -56,6 +59,8 @@ export class GameRoom extends DurableObject<Env> {
       this.tokens = (await ctx.storage.get<Record<string, number>>("tokens")) ?? {};
       this.seatPlayers = (await ctx.storage.get<Record<number, string>>("seatPlayers")) ?? {};
       this.gameStartMs = (await ctx.storage.get<number>("gameStartMs")) ?? 0;
+      this.quickMatch = (await ctx.storage.get<boolean>("quickMatch")) ?? false;
+      this.quickDeadline = (await ctx.storage.get<number>("quickDeadline")) ?? 0;
     });
   }
 
@@ -191,6 +196,14 @@ export class GameRoom extends DurableObject<Env> {
       this.report((s) => s.recordJoin(pid));
     }
 
+    if (msg.quick) {
+      this.game!.seats[seatId]!.ready = true;
+      if (!this.quickMatch) {
+        this.quickMatch = true;
+        this.quickDeadline = Date.now() + MATCH_DEADLINE_MS;
+      }
+    }
+
     const token = msg.sessionToken && known != null ? msg.sessionToken : crypto.randomUUID();
     this.tokens[token] = seatId;
     if (msg.playerId) this.seatPlayers[seatId] = msg.playerId;
@@ -199,7 +212,8 @@ export class GameRoom extends DurableObject<Env> {
     this.send(ws, { t: "welcome", seatId, sessionToken: token });
     this.broadcastState();
     this.reportPresence();
-    await this.scheduleNext(); // resume bots or arm idle timer
+    await this.maybeStartQuick();
+    await this.scheduleNext(); // resume bots, arm idle timer, or hold the quick deadline
   }
 
   private async handleAction(
@@ -220,10 +234,52 @@ export class GameRoom extends DurableObject<Env> {
     await this.scheduleNext();
   }
 
+  /** Count connected human seats — the players a quick match will start with. */
+  private humanCount(): number {
+    return this.game!.seats.filter((s) => s.kind === "human").length;
+  }
+
+  /** Start a quick match immediately once the table is full of humans. */
+  private async maybeStartQuick(): Promise<void> {
+    if (!this.quickMatch || this.game!.phase !== "lobby") return;
+    if (this.humanCount() < 4) return;
+    await this.startQuick(0);
+  }
+
+  /** Fire at the deadline: back-fill bots per the rule, then start. */
+  private async quickDeadlineStart(): Promise<void> {
+    const bots = deadlineBots(this.humanCount());
+    if (bots == null) return; // nobody connected — stay idle
+    await this.startQuick(bots);
+  }
+
+  /** Add `bots` bot seats (all auto-ready), then run the engine's start. */
+  private async startQuick(bots: number): Promise<void> {
+    const prevPhase = this.game!.phase;
+    for (let i = 0; i < bots; i++) {
+      const res = apply(this.game!, { type: "addBot" }, 0);
+      if (res.state) this.game = res.state;
+    }
+    const res = apply(this.game!, { type: "start" }, 0);
+    if (res.error || !res.state) return;
+    this.game = res.state;
+    this.quickMatch = false; // the match has begun; drop the deadline
+    this.quickDeadline = 0;
+    await this.persist();
+    this.broadcastState();
+    await this.trackTransition(prevPhase);
+  }
+
   /** Arm the next alarm: a bot move if one is pending, else an idle-takeover
    *  timer if the active human has gone and someone is still watching. */
   private async scheduleNext(delay = BOT_DELAY_MS): Promise<void> {
     if (!this.game) return;
+    if (this.game.phase === "lobby") {
+      if (this.quickMatch && this.quickDeadline)
+        await this.ctx.storage.setAlarm(this.quickDeadline);
+      else await this.ctx.storage.deleteAlarm();
+      return;
+    }
     if (hasBotMove(this.game)) {
       await this.ctx.storage.setAlarm(Date.now() + delay);
     } else if (this.botTradeAwaitingHumans()) {
@@ -256,6 +312,11 @@ export class GameRoom extends DurableObject<Env> {
   /** Fired by the scheduled alarm: play one bot action, or take over an idle seat. */
   async alarm(): Promise<void> {
     if (!this.game) return;
+    if (this.quickMatch && this.game.phase === "lobby") {
+      await this.quickDeadlineStart();
+      await this.scheduleNext();
+      return;
+    }
     const prevPhase = this.game.phase;
     if (hasBotMove(this.game)) {
       const outcome = stepBots(this.game);
@@ -317,5 +378,7 @@ export class GameRoom extends DurableObject<Env> {
     await this.ctx.storage.put("game", this.game);
     await this.ctx.storage.put("tokens", this.tokens);
     await this.ctx.storage.put("seatPlayers", this.seatPlayers);
+    await this.ctx.storage.put("quickMatch", this.quickMatch);
+    await this.ctx.storage.put("quickDeadline", this.quickDeadline);
   }
 }
