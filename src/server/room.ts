@@ -7,6 +7,7 @@ import { toView } from "./views";
 import { hasBotMove, stepBots } from "./bots";
 import type { StatsHub } from "./stats";
 import type { RateLimiter } from "./rate";
+import type { Matchmaker } from "./matchmaker";
 import type { ClientMessage, ServerMessage } from "./protocol";
 
 /** Pacing between bot actions so players can follow the game and the bots feel
@@ -31,6 +32,7 @@ export interface Env {
   GAME_ROOM: DurableObjectNamespace<GameRoom>;
   STATS: DurableObjectNamespace<StatsHub>;
   RATE_LIMITER: DurableObjectNamespace<RateLimiter>;
+  MATCHMAKER: DurableObjectNamespace<Matchmaker>;
   ASSETS: Fetcher;
   ADMIN_KEY: string;
 }

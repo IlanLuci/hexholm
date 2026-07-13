@@ -1,8 +1,9 @@
 import { GameRoom, type Env } from "./room";
 import { StatsHub } from "./stats";
 import { RateLimiter } from "./rate";
+import { Matchmaker } from "./matchmaker";
 
-export { GameRoom, StatsHub, RateLimiter };
+export { GameRoom, StatsHub, RateLimiter, Matchmaker };
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function randomCode(len = 4): string {
