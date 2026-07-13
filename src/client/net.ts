@@ -156,6 +156,9 @@ export function useGame(): Game {
     if (!raw) return false;
     let saved: GameState;
     try { saved = JSON.parse(raw) as GameState; } catch { localStorage.removeItem(OFFLINE_KEY); return false; }
+    alive.current = false;
+    ws.current?.close();
+    ws.current = null;
     const d = makeDriver();
     driver.current = d;
     setOffline(true);

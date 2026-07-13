@@ -98,7 +98,7 @@ export function Landing({
           Gather brick, grain and ore. Cut shrewd trades, block your rivals, and race to ten victory points — one hex at a time.
         </p>
 
-        {invited && (
+        {online && invited && (
           <div style={{ marginTop: 28, display: "inline-flex", alignItems: "center", gap: 10, background: "rgba(196,99,59,.18)", border: "1px solid rgba(196,99,59,.5)", borderRadius: 8, padding: "12px 18px" }}>
             <span style={{ color: "#EBC97A", fontWeight: 800, letterSpacing: 1, fontSize: 12, textTransform: "uppercase" }}>Invited to room {code}</span>
             <span style={{ color: "#CBBEA4", fontWeight: 600, fontSize: 13 }}>— enter your name and join below</span>
