@@ -3,6 +3,7 @@ import type { GameState } from "../shared/types";
 import type { GameEvent } from "../shared/actions";
 import { apply, addSeat, createLobby } from "../shared/engine";
 import { victoryPoints } from "../shared/scoring";
+import { ensureSettings } from "../shared/setup";
 import { toView } from "./views";
 import { hasBotMove, stepBots, BOT_DELAY_MS, TRADE_WAIT_MS, delayAfter } from "../shared/bots";
 import { MATCH_DEADLINE_MS, deadlineBots } from "./quickmatch";
@@ -41,6 +42,7 @@ export class GameRoom extends DurableObject<Env> {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       this.game = (await ctx.storage.get<GameState>("game")) ?? null;
+      if (this.game) ensureSettings(this.game);
       this.tokens = (await ctx.storage.get<Record<string, number>>("tokens")) ?? {};
       this.seatPlayers = (await ctx.storage.get<Record<number, string>>("seatPlayers")) ?? {};
       this.gameStartMs = (await ctx.storage.get<number>("gameStartMs")) ?? 0;
@@ -207,6 +209,8 @@ export class GameRoom extends DurableObject<Env> {
   ): Promise<void> {
     const att = ws.deserializeAttachment() as Attachment | null;
     if (att == null) return this.send(ws, { t: "error", message: "Say hello first" });
+    if (msg.action.type === "setSettings" && this.quickMatch)
+      return this.send(ws, { t: "error", message: "Settings are fixed for matchmaking games" });
     const prevPhase = this.game!.phase;
     const result = apply(this.game!, msg.action, att.seatId);
     if (result.error || !result.state)
