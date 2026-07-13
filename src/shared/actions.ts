@@ -1,4 +1,4 @@
-import type { Resource, DevKind, PartialHand } from "./types";
+import type { Resource, DevKind, PartialHand, SetupMode } from "./types";
 
 export type Action =
   // lobby
@@ -7,6 +7,7 @@ export type Action =
   | { type: "ready"; ready: boolean }
   | { type: "addBot" }
   | { type: "removeBot"; seat: number }
+  | { type: "setSettings"; winVP?: number; setupMode?: SetupMode }
   | { type: "start" }
   // setup
   | { type: "placeSettlement"; vertex: number }

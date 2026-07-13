@@ -1,7 +1,7 @@
 import { HEX_COUNT, PORT_SLOTS } from "./board";
 import { makeRng, shuffle } from "./rng";
 import type { Board, DevKind, GameState, HexTile, Port, Resource, Seat } from "./types";
-import { emptyHand } from "./types";
+import { DEFAULT_SETTINGS, emptyHand, type RoomSettings } from "./types";
 
 const TERRAIN_BAG: HexTile["terrain"][] = [
   ...Array<HexTile["terrain"]>(4).fill("wood"),
@@ -89,9 +89,20 @@ export function createLobby(roomCode: string, seed: string): GameState {
     awards: { longestRoad: null, largestArmy: null },
     winner: null,
     log: [{ t: 0, text: "A new island rises from the sea." }],
+    settings: { ...DEFAULT_SETTINGS },
     seed,
     version: 0,
   };
+}
+
+/** Coerce a missing or partial `settings` object (e.g. from a game persisted
+ *  before settings existed) to a complete, valid RoomSettings. Mutates in place. */
+export function ensureSettings(game: GameState): GameState {
+  const raw = (game as { settings?: Partial<RoomSettings> }).settings;
+  const winVP = typeof raw?.winVP === "number" ? raw.winVP : DEFAULT_SETTINGS.winVP;
+  const setupMode = raw?.setupMode === "settlementCity" ? "settlementCity" : DEFAULT_SETTINGS.setupMode;
+  game.settings = { winVP, setupMode };
+  return game;
 }
 
 // Vivid, mutually distinct hues chosen to stand apart from every terrain tile

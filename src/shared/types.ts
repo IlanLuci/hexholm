@@ -67,6 +67,15 @@ export interface LogEntry {
   text: string;
 }
 
+export type SetupMode = "settlements" | "settlementCity";
+
+export interface RoomSettings {
+  winVP: number;
+  setupMode: SetupMode;
+}
+
+export const DEFAULT_SETTINGS: RoomSettings = { winVP: 10, setupMode: "settlements" };
+
 export interface GameState {
   roomCode: string;
   phase: Phase;
@@ -85,6 +94,7 @@ export interface GameState {
   awards: { longestRoad: number | null; largestArmy: number | null };
   winner: number | null;
   log: LogEntry[];
+  settings: RoomSettings;
   seed: string;
   version: number;
 }
