@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useGame } from "./net";
 import { Landing } from "./screens/Landing";
 import { Lobby } from "./screens/Lobby";
+import { Matching } from "./screens/Matching";
 import { GameScreen } from "./screens/Game";
 import { ActionToast } from "./components/ActionToast";
 import { C } from "./theme";
@@ -17,7 +18,8 @@ export function App() {
     reconnected.current = true;
     const room = localStorage.getItem("hexholm:room");
     const name = localStorage.getItem("hexholm:name");
-    if (room && name) game.connect(room, name);
+    const wasQuick = localStorage.getItem("hexholm:quick") === "1";
+    if (room && name) game.connect(room, name, wasQuick);
   }, [game]);
 
   useEffect(() => {
@@ -28,9 +30,9 @@ export function App() {
 
   let screen;
   if (!view || status === "idle") {
-    screen = <Landing connect={game.connect} status={status} />;
+    screen = <Landing connect={game.connect} quickPlay={game.quickPlay} status={status} />;
   } else if (view.phase === "lobby") {
-    screen = <Lobby game={game} view={view} />;
+    screen = game.quick ? <Matching game={game} view={view} /> : <Lobby game={game} view={view} />;
   } else {
     screen = <GameScreen game={game} view={view} />;
   }
