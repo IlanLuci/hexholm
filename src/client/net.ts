@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Action, GameEvent } from "../shared/actions";
 import type { ClientMessage, GameView, ServerMessage } from "../server/protocol";
 import { getPlayerId } from "./identity";
+import { createOfflineDriver, type OfflineDriver } from "./offlineGame";
+import type { GameState } from "../shared/types";
 
 export type Status = "idle" | "connecting" | "open" | "reconnecting" | "closed";
 
@@ -14,12 +16,16 @@ export interface Game {
   quick: boolean;
   connect: (code: string, name: string, quick?: boolean) => void;
   quickPlay: (name: string) => void;
+  offline: boolean;
+  playOffline: (bots: 2 | 3, name: string) => void;
+  resumeOffline: () => boolean;
   send: (action: Action) => void;
   leave: () => void;
   clearError: () => void;
 }
 
 const tokenKey = (code: string) => `hexholm:token:${code}`;
+const OFFLINE_KEY = "hexholm:offline";
 
 export function useGame(): Game {
   const [view, setView] = useState<GameView | null>(null);
@@ -28,8 +34,10 @@ export function useGame(): Game {
   const [seatId, setSeatId] = useState<number | null>(null);
   const [lastEvents, setLastEvents] = useState<GameEvent[]>([]);
   const [quick, setQuick] = useState(false);
+  const [offline, setOffline] = useState(false);
 
   const ws = useRef<WebSocket | null>(null);
+  const driver = useRef<OfflineDriver | null>(null);
   const params = useRef<{ code: string; name: string; quick: boolean } | null>(null);
   const alive = useRef(false);
   const retry = useRef<number | null>(null);
@@ -112,13 +120,62 @@ export function useGame(): Game {
 
   quickPlayRef.current = quickPlay;
 
+  const makeDriver = useCallback((): OfflineDriver => {
+    const d = createOfflineDriver({
+      onChange: () => {
+        const v = d.view();
+        setView(v);
+        setLastEvents(d.events());
+        const snap = d.snapshot();
+        if (snap && v && v.phase !== "finished")
+          localStorage.setItem(OFFLINE_KEY, JSON.stringify(snap));
+        else localStorage.removeItem(OFFLINE_KEY); // game over — nothing to resume
+      },
+    });
+    return d;
+  }, []);
+
+  const playOffline = useCallback(
+    (bots: 2 | 3, name: string) => {
+      alive.current = false;
+      ws.current?.close();
+      ws.current = null;
+      localStorage.setItem("hexholm:name", name);
+      const d = makeDriver();
+      driver.current = d;
+      setOffline(true);
+      setSeatId(0);
+      setStatus("open");
+      d.start(bots, name);
+    },
+    [makeDriver],
+  );
+
+  const resumeOffline = useCallback((): boolean => {
+    const raw = localStorage.getItem(OFFLINE_KEY);
+    if (!raw) return false;
+    let saved: GameState;
+    try { saved = JSON.parse(raw) as GameState; } catch { localStorage.removeItem(OFFLINE_KEY); return false; }
+    const d = makeDriver();
+    driver.current = d;
+    setOffline(true);
+    setSeatId(0);
+    setStatus("open");
+    d.resume(saved);
+    return true;
+  }, [makeDriver]);
+
   const send = useCallback((action: Action) => {
+    if (driver.current) { driver.current.send(action); return; }
     const sock = ws.current;
     if (sock && sock.readyState === WebSocket.OPEN)
       sock.send(JSON.stringify({ t: "action", action } satisfies ClientMessage));
   }, []);
 
   const leave = useCallback(() => {
+    if (driver.current) { driver.current.leave(); driver.current = null; }
+    localStorage.removeItem(OFFLINE_KEY);
+    setOffline(false);
     alive.current = false;
     entered.current = false;
     if (retry.current) window.clearTimeout(retry.current);
@@ -150,6 +207,9 @@ export function useGame(): Game {
     quick,
     connect,
     quickPlay,
+    offline,
+    playOffline,
+    resumeOffline,
     send,
     leave,
     clearError: () => setError(null),
