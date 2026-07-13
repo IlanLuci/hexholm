@@ -189,8 +189,11 @@ function setupSeatAt(s: GameState, k: number): number {
   return k < n ? s.turnOrder[k]! : s.turnOrder[2 * n - 1 - k]!;
 }
 
-function totalSettlements(s: GameState): number {
-  return s.seats.reduce((sum, st) => sum + st.buildings.settlements.length, 0);
+function totalPlacements(s: GameState): number {
+  return s.seats.reduce(
+    (sum, st) => sum + st.buildings.settlements.length + st.buildings.cities.length,
+    0,
+  );
 }
 
 function applySetup(s: GameState, action: Action, seat: number): ApplyResult {
@@ -200,7 +203,10 @@ function applySetup(s: GameState, action: Action, seat: number): ApplyResult {
     if (setup.step !== "settle") return err("Place a road, not a settlement");
     if (!canPlaceSettlement(s, seat, action.vertex, { setup: true }))
       return err("Cannot place a settlement there");
-    s.seats[seat]!.buildings.settlements.push(action.vertex);
+    if (setup.round === 2 && s.settings.setupMode === "settlementCity")
+      s.seats[seat]!.buildings.cities.push(action.vertex);
+    else
+      s.seats[seat]!.buildings.settlements.push(action.vertex);
     setup.lastVertex = action.vertex;
     setup.step = "road";
     if (setup.round === 2) {
@@ -229,7 +235,7 @@ function applySetup(s: GameState, action: Action, seat: number): ApplyResult {
 
 function advanceSetup(s: GameState): void {
   const n = s.turnOrder.length;
-  const placed = totalSettlements(s); // completed placements so far
+  const placed = totalPlacements(s); // completed placements so far
   if (placed >= 2 * n) {
     startPlay(s, s.turnOrder[0]!);
     return;
