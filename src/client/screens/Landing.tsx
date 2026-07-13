@@ -12,11 +12,13 @@ export function Landing({
 }: {
   connect: (code: string, name: string) => void;
   quickPlay: (name: string) => void;
-  playOffline: (bots: 2 | 3, name: string) => void;
+  playOffline: (bots: 2 | 3, name: string, settings: { winVP: number; setupMode: "settlements" | "settlementCity" }) => void;
   status: Status;
 }) {
   const online = useOnline();
   const [botCount, setBotCount] = useState<2 | 3>(3); // default 4-player table (3 bots)
+  const [winVP, setWinVP] = useState(10);
+  const [setupMode, setSetupMode] = useState<"settlements" | "settlementCity">("settlements");
   const [name, setName] = useState(localStorage.getItem("hexholm:name") ?? "");
   const [code, setCode] = useState(
     () => new URLSearchParams(location.search).get("room")?.toUpperCase() ?? "",
@@ -53,7 +55,7 @@ export function Landing({
   };
   const playOff = () => {
     remember();
-    playOffline(botCount, name.trim());
+    playOffline(botCount, name.trim(), { winVP, setupMode });
   };
 
   const connecting = busy || status === "connecting";
@@ -165,6 +167,25 @@ export function Landing({
               })}
               <span style={{ color: "#8E937F", fontWeight: 600, fontSize: 13 }}>you + {botCount} bots</span>
             </div>
+            <div style={{ marginTop: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ color: "#8E937F", fontWeight: 700, fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>Win at</span>
+              <button style={offStepBtn} onClick={() => setWinVP((v) => Math.max(7, v - 1))} disabled={winVP <= 7}>−</button>
+              <span style={{ color: C.cream, fontWeight: 800, fontSize: 16, minWidth: 22, textAlign: "center" }}>{winVP}</span>
+              <button style={offStepBtn} onClick={() => setWinVP((v) => Math.min(13, v + 1))} disabled={winVP >= 13}>+</button>
+              <span style={{ color: "#8E937F", fontWeight: 600, fontSize: 13 }}>victory points</span>
+            </div>
+            <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ color: "#8E937F", fontWeight: 700, fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>Placement</span>
+              {(["settlements", "settlementCity"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setSetupMode(m)}
+                  style={{ ...ghostBtn, padding: "9px 14px", fontSize: 13, background: setupMode === m ? C.terracotta : "transparent", color: setupMode === m ? "#FBF3E4" : C.cream, borderColor: setupMode === m ? C.terracotta : "rgba(244,236,221,.35)" }}
+                >
+                  {m === "settlements" ? "2 settlements" : "Settlement + city"}
+                </button>
+              ))}
+            </div>
             <p style={{ marginTop: 18, color: "#CBBEA4", fontWeight: 500, fontSize: 14, maxWidth: 460 }}>
               You're offline. Online matches and private tables need a connection — but you can still play a full game against the bots right here.
             </p>
@@ -225,3 +246,5 @@ const ghostBtn: React.CSSProperties = {
   borderRadius: 5,
   cursor: "pointer",
 };
+
+const offStepBtn: React.CSSProperties = { width: 30, height: 30, borderRadius: 5, border: "1px solid rgba(244,236,221,.35)", background: "transparent", color: C.cream, fontWeight: 800, fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 0 };

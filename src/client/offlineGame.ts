@@ -1,6 +1,6 @@
 // src/client/offlineGame.ts
 import type { Action, GameEvent } from "../shared/actions";
-import type { GameState } from "../shared/types";
+import type { GameState, RoomSettings } from "../shared/types";
 import type { GameView } from "../server/protocol";
 import { createLobby, addSeat, apply } from "../shared/engine";
 import { hasBotMove, stepBots, delayAfter, TRADE_WAIT_MS } from "../shared/bots";
@@ -20,7 +20,7 @@ const realTimers: OfflineTimers = {
 };
 
 export interface OfflineDriver {
-  start(bots: 2 | 3, name: string): void;
+  start(bots: 2 | 3, name: string, settings?: RoomSettings): void;
   resume(game: GameState): void;
   send(action: Action): void;
   leave(): void;
@@ -82,10 +82,14 @@ export function createOfflineDriver(opts: {
   }
 
   return {
-    start(bots, name) {
+    start(bots, name, settings) {
       let s = createLobby(OFFLINE_CODE, seed());
       s = addSeat(s, name.trim().slice(0, 20) || "You", "human");
       for (let i = 0; i < bots; i++) s = apply(s, { type: "addBot" }, HUMAN_SEAT).state ?? s;
+      if (settings) {
+        const r = apply(s, { type: "setSettings", winVP: settings.winVP, setupMode: settings.setupMode }, HUMAN_SEAT);
+        if (r.state) s = r.state;
+      }
       for (const seat of s.seats) seat.ready = true;
       s = apply(s, { type: "start" }, HUMAN_SEAT).state ?? s;
       game = s;

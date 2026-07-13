@@ -3,7 +3,8 @@ import type { Action, GameEvent } from "../shared/actions";
 import type { ClientMessage, GameView, ServerMessage } from "../server/protocol";
 import { getPlayerId } from "./identity";
 import { createOfflineDriver, type OfflineDriver } from "./offlineGame";
-import type { GameState } from "../shared/types";
+import type { GameState, RoomSettings } from "../shared/types";
+import { ensureSettings } from "../shared/setup";
 
 export type Status = "idle" | "connecting" | "open" | "reconnecting" | "closed";
 
@@ -17,7 +18,7 @@ export interface Game {
   connect: (code: string, name: string, quick?: boolean) => void;
   quickPlay: (name: string) => void;
   offline: boolean;
-  playOffline: (bots: 2 | 3, name: string) => void;
+  playOffline: (bots: 2 | 3, name: string, settings: RoomSettings) => void;
   resumeOffline: () => boolean;
   send: (action: Action) => void;
   leave: () => void;
@@ -136,7 +137,7 @@ export function useGame(): Game {
   }, []);
 
   const playOffline = useCallback(
-    (bots: 2 | 3, name: string) => {
+    (bots: 2 | 3, name: string, settings: RoomSettings) => {
       alive.current = false;
       ws.current?.close();
       ws.current = null;
@@ -146,7 +147,7 @@ export function useGame(): Game {
       setOffline(true);
       setSeatId(0);
       setStatus("open");
-      d.start(bots, name);
+      d.start(bots, name, settings);
     },
     [makeDriver],
   );
@@ -156,6 +157,7 @@ export function useGame(): Game {
     if (!raw) return false;
     let saved: GameState;
     try { saved = JSON.parse(raw) as GameState; } catch { localStorage.removeItem(OFFLINE_KEY); return false; }
+    ensureSettings(saved);
     alive.current = false;
     ws.current?.close();
     ws.current = null;
